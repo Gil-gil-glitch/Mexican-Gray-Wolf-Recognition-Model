@@ -1,0 +1,35 @@
+2026/5/19
+
+14:45:
+
+# Starting a virtual environment
+
+# Create
+python -m venv [name]
+
+# Activating a specific Virtual environment
+source [name]/
+# Download Idaho Camera Traps dataset from Google Cloud Storage
+
+# Navigate to project data directory
+cd ~/WolfDetect/bin/activate
+
+
+___________________________________________________________________________________
+
+# Download recursively into current directory
+gsutil -m cp -r gs://public-datasets-lila/idaho-camera-traps/public ./
+
+# Result:
+# ~/WolfDetect/data/public
+
+# Notes:
+# - `-m` = multi-threaded / faster download
+# - `-r` = recursive copy
+# - `./` = current directory
+# - destination directory must already exist
+
+___________________________________________________________________________________
+
+# Count the amount of files in a folder (more accurate than ls -l)
+find . -type f | wc -l
