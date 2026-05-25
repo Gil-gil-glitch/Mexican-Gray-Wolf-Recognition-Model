@@ -10,6 +10,12 @@
 #  training and testing. The program will also convert all images into a consistent format of RGB. Image resizing must
 #  be done separately since the datasets have different image dimensions and resizing may lead to loss of important features. 
 #
+#
+## Result
+#
+# Total training images tracked: 160944
+# Total validation images tracked: 40049
+
 
 import os
 import json
