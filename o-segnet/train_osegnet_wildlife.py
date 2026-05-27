@@ -16,7 +16,7 @@ from models import OSegNet
 # =====================================================================
 # HIGH-SPEED HARDWARE-ACCELERATED CONFIGURATION
 # =====================================================================
-BATCH_SIZE = 128  # Maximizes the RTX 2080's VRAM capability
+BATCH_SIZE = 32  # Maximizes the RTX 2080's VRAM capability
 LEARNING_RATE = 2e-4
 EPOCHS = 5
 NUM_WORKERS = 4  # Utilizes 4 CPU threads to decode images ahead of the GPU
@@ -73,6 +73,9 @@ def train_wildlife_domain():
     print("=====================================================================")
     print(f"[Hardware Target] ACTIVE ACCELERATOR: {DEVICE}")
     print(f"[Hardware Target] COMPUTE UNIT: {torch.cuda.get_device_name(0)}")
+
+    torch.cuda.empty_cache()
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     
     dataset = CustomWildlifeSegmentationDataset(PSEUDO_TRAIN_MANIFEST)
     
