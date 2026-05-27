@@ -1,11 +1,9 @@
 import pandas as pd
 from pathlib import Path
 
-# Config paths
 MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_final_train_manifest.csv")
 CROPS_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/hybrid_crops_v2")
 
-# iWildCam species mapping provided by you
 SPECIES_MAP = {
     0: "empty", 1: "deer", 2: "moose", 3: "squirrel", 4: "rodent",
     5: "small_mammal", 6: "elk", 7: "pronghorn_antelope", 8: "rabbit",
@@ -14,53 +12,40 @@ SPECIES_MAP = {
     18: "dog", 19: "opossum", 20: "bison", 21: "mountain_goat", 22: "mountain_lion"
 }
 
-def analyze_active_crops():
-    if not MANIFEST_PATH.exists():
-        print(f"Error: Manifest not found at {MANIFEST_PATH}")
-        return
-    if not CROPS_DIR.exists():
-        print(f"Error: Output crops folder not found at {CROPS_DIR}")
+def analyze_active_crops_fast():
+    if not MANIFEST_PATH.exists() or not CROPS_DIR.exists():
+        print("Paths misaligned. Check manifest/crops directory configuration.")
         return
 
-    # 1. Read the manifest mapping
     print("Reading manifest mapping...")
     df = pd.read_csv(MANIFEST_PATH)
     
-    # Standardize column types for safe lookups (adjust 'category_id' if your column has a different name)
-    df['category_id'] = df['category_id'].astype(int)
-    
-    # Create a quick lookup dictionary: {file_name: species_id}
-    # This makes the execution instantaneous even with 160,000 rows
-    manifest_lookup = dict(zip(df['file_name'], df['category_id']))
+    # --- OPTIMIZATION HACK ---
+    # Strip extensions from manifest names immediately and build a direct hash map.
+    # This completely eliminates the inner sequential loop!
+    print("Building high-speed index mapping...")
+    manifest_lookup = {Path(row['file_name']).stem: int(row['category_id']) for _, row in df.iterrows()}
 
-    # 2. Scan the current files in your active output folder
     print("Scanning active output directory...")
     current_files = list(CROPS_DIR.glob("*.png"))
     total_cropped = len(current_files)
     print(f"Total images successfully cropped so far: {total_cropped}\n")
 
-    # 3. Cross-reference file names to extract species counts
     species_counts = {}
     
     for file_path in current_files:
-        # Strip the prefix 'hybrid_wildlife_subject_' or 'hybrid_wolf_' to get the original filename
         name_str = file_path.name
         
-        original_name = None
+        # Isolate the core filename stem
+        original_stem = None
         if name_str.startswith("hybrid_wildlife_subject_"):
-            original_name = name_str.replace("hybrid_wildlife_subject_", "")
+            original_stem = name_str.replace("hybrid_wildlife_subject_", "").split('.')[0]
         elif name_str.startswith("hybrid_wolf_"):
-            original_name = name_str.replace("hybrid_wolf_", "")
+            original_stem = name_str.replace("hybrid_wolf_", "").split('.')[0]
             
-        if original_name:
-            # Revert the extension back to whatever the manifest expects (usually .jpg)
-            base_stem = Path(original_name).stem
-            
-            matched_id = None
-            for manifest_file, s_id in manifest_lookup.items():
-                if Path(manifest_file).stem == base_stem:
-                    matched_id = s_id
-                    break
+        if original_stem:
+            # High-speed O(1) hash map retrieval
+            matched_id = manifest_lookup.get(original_stem)
             
             if matched_id is not None:
                 species_name = SPECIES_MAP.get(matched_id, f"Unknown ({matched_id})")
@@ -68,7 +53,6 @@ def analyze_active_crops():
             else:
                 species_counts["Unmapped in Manifest"] = species_counts.get("Unmapped in Manifest", 0) + 1
 
-    # 4. Print the leaderboard results
     print("====================================================")
     print("        LIVE SPECIES EXTRACTION BREAKDOWN           ")
     print("====================================================")
@@ -79,4 +63,4 @@ def analyze_active_crops():
     print("====================================================")
 
 if __name__ == "__main__":
-    analyze_active_crops()
+    analyze_active_crops_fast()
