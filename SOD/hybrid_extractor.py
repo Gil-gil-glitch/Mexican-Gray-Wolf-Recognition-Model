@@ -28,9 +28,9 @@ IDAHO_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
 HYBRID_OUTPUT_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/hybrid_crops")
 HYBRID_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-def execute_cascaded_pipeline():
+def execute_non_empty_pipeline(target_count=20):
     print("=====================================================================")
-    print("         CASCADED PIPELINE: YOLOv8 FILTER + BiRefNet MATTING         ")
+    print("      NON-EMPTY CASCADED PIPELINE: VALIDATED WILDLIFE SUBJECTS      ")
     print("=====================================================================")
     
     if not MANIFEST_PATH.exists():
@@ -38,14 +38,14 @@ def execute_cascaded_pipeline():
         return
         
     df = pd.read_csv(MANIFEST_PATH)
+    print(f"[Manifest] Loaded {len(df)} total rows.")
     
-    # 1. Initialize YOLOv8 for coarse localization
+    # 1. Initialize YOLOv8 for spatial validation
     print("[Initialization] Loading YOLOv8 localization weights...")
     yolo_model = YOLO("yolov8n.pt")
-    # COCO animal class indices
-    animal_classes = [15, 16, 17, 18, 19, 20, 21, 22, 23] 
+    animal_classes = [15, 16, 17, 18, 19, 20, 21, 22, 23] # COCO animal IDs
     
-    # 2. Initialize BiRefNet for fine-grained boundary extraction
+    # 2. Initialize BiRefNet for fine matting
     print("[Initialization] Staging local BiRefNet model on GPU accelerator...")
     provider_options = [{"device_id": "0"}]
     sod_session = new_session(
@@ -55,14 +55,22 @@ def execute_cascaded_pipeline():
     )
     
     saved_count = 0
-    fallback_count = 0
+    skipped_empty_count = 0
     
-    print("\n[Pipeline Loop] Initiating cascaded extraction...")
+    print(f"\n[Pipeline] Scanning for {target_count} non-empty animal profiles...")
+    
+    # Progress bar tracks verified saves, not raw rows
+    pbar = tqdm(total=target_count, desc="Extracting Foregrounds")
+    
     for idx, row in df.iterrows():
         file_name = row['file_name']
         source = row['dataset_source']
-        animal_class_label = "wolf" if source == "idaho_wolf" else "wildlife_subject"
         
+        # Meta-exclusion: Skip explicitly logged empty background tracks
+        if str(source).lower() == 'empty':
+            continue
+            
+        animal_class_label = "wolf" if source == "idaho_wolf" else "wildlife_subject"
         base_dir = IWILDCAM_RAW_DIR if source == 'iwildcam' else IDAHO_RAW_DIR
         img_path = base_dir / file_name
         
@@ -73,7 +81,7 @@ def execute_cascaded_pipeline():
             with Image.open(img_path).convert('RGB') as img:
                 w, h = img.size
                 
-                # --- STAGE 1: YOLO REGION FILTERING ---
+                # --- STAGE 1: METADATA / OBJECT VERIFICATION ---
                 yolo_results = yolo_model(img, verbose=False)
                 best_box = None
                 highest_conf = -1.0
@@ -87,71 +95,61 @@ def execute_cascaded_pipeline():
                                 highest_conf = conf
                                 best_box = box.xyxy[0].cpu().numpy()
                 
-                # Coarse crop selection
-                if best_box is not None and highest_conf > 0.25:
-                    xmin, ymin, xmax, ymax = best_box
-                    
-                    # Add a 10% spatial context padding buffer so BiRefNet sees the full outline edge
-                    pad_w = (xmax - xmin) * 0.10
-                    pad_h = (ymax - ymin) * 0.10
-                    
-                    crop_box = (
-                        max(0, int(xmin - pad_w)),
-                        max(0, int(ymin - pad_h)),
-                        min(w, int(xmax + pad_w)),
-                        min(h, int(ymax + pad_h))
-                    )
-                    coarse_crop = img.crop(crop_box)
-                    used_fallback = False
-                else:
-                    # Fallback context window if YOLO misses entirely
-                    coarse_crop = img.crop((int(w*0.05), int(h*0.05), int(w*0.95), int(h*0.95)))
-                    used_fallback = True
-                    fallback_count += 1
+                # CRITICAL GUARDRAIL: If no animal passes our confidence score,
+                # it's treated as an empty frame/noise. Skip it entirely!
+                if best_box is None or highest_conf < 0.40:
+                    skipped_empty_count += 1
+                    continue
                 
+                # --- STAGE 2: TIGHT LOCALIZATION CROP ---
+                xmin, ymin, xmax, ymax = best_box
+                pad_w = (xmax - xmin) * 0.10
+                pad_h = (ymax - ymin) * 0.10
+                
+                crop_box = (
+                    max(0, int(xmin - pad_w)),
+                    max(0, int(ymin - pad_h)),
+                    min(w, int(xmax + pad_w)),
+                    min(h, int(ymax + pad_h))
+                )
+                coarse_crop = img.crop(crop_box)
+                
+                # --- STAGE 3: FINE MATTING & EDGE HARDENING ---
                 rgba_output = remove(coarse_crop, session=sod_session)
-                
-                # Split channels to isolate the Alpha (transparency) layer
                 r, g, b, a = rgba_output.split()
                 
-                # --- MASK HARDENING ENGINE ---
-                # Convert Alpha channel to a numpy array to manipulate pixels directly
                 alpha_array = np.array(a)
-                
-                # Force a hard threshold: if alpha > 128, make it completely solid (255)
-                # Otherwise, make it completely transparent (0). This kills the feathering/blur.
+                # Binarize mask to strip away blurry/feathered edge gradients entirely
                 hard_alpha_array = np.where(alpha_array > 128, 255, 0).astype(np.uint8)
-                
-                # Reconstruct the hardened alpha channel
                 hard_alpha_channel = Image.fromarray(hard_alpha_array)
                 
-                # Merge the crisp alpha channel back with original RGB channels
                 crisp_rgba = Image.merge("RGBA", (r, g, b, hard_alpha_channel))
-                
-                # Tighten transparent borders to isolate the subject flawlessly
                 final_bbox = crisp_rgba.getbbox()
+                
                 if final_bbox:
                     tight_crop = crisp_rgba.crop(final_bbox)
                     save_name = f"hybrid_{animal_class_label}_{Path(file_name).name}"
                     save_path = HYBRID_OUTPUT_DIR / Path(save_name).with_suffix('.png')
                     tight_crop.save(save_path)
+                    
                     saved_count += 1
+                    pbar.update(1)
                     
         except Exception as e:
             continue
 
-        # Diagnostic constraint to inspect the first 50 images
-        if saved_count >= 50:
-            print(f"\n[Test Break] Staged 50 cascaded images for analysis.")
+        # Halt automatically once your target batch of real animals is processed
+        if saved_count >= target_count:
             break
-
+            
+    pbar.close()
     print("\n=====================================================================")
-    print("                     CASCADED EXECUTION COMPLETE                     ")
+    print("                     PRODUCTION FILTER COMPLETE                      ")
     print("=====================================================================")
-    print(f"Successfully Extracted Images: {saved_count}")
-    print(f"Processed via YOLO Fallback:   {fallback_count}")
-    print(f"Output Location:               {HYBRID_OUTPUT_DIR}")
+    print(f"Verified Non-Empty Saves:      {saved_count}")
+    print(f"Skipped Empty/Noise Frames:    {skipped_empty_count}")
+    print(f"Output Directory Location:     {HYBRID_OUTPUT_DIR}")
     print("=====================================================================")
 
 if __name__ == "__main__":
-    execute_cascaded_pipeline()
+    execute_non_empty_pipeline(target_count=50)
