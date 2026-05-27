@@ -25,12 +25,14 @@ from tqdm import tqdm
 MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_final_train_manifest.csv")
 IWILDCAM_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/train_images")
 IDAHO_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
-HYBRID_OUTPUT_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/hybrid_crops")
+
+# VERSIONED OUTPUT: Automatically outputs to v2 to prevent overwriting/clashing
+HYBRID_OUTPUT_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/hybrid_crops_v2")
 HYBRID_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-def execute_production_pipeline():
+def execute_upgraded_production_pipeline():
     print("=====================================================================")
-    print("         PRODUCTION MODE: FULL DATASET CASCADED EXTRACTION           ")
+    print("      UPGRADED PRODUCTION PIPELINE: AGNOSTIC CASCADED MATTING       ")
     print("=====================================================================")
     
     if not MANIFEST_PATH.exists():
@@ -41,10 +43,14 @@ def execute_production_pipeline():
     total_rows = len(df)
     print(f"[Manifest] Loaded {total_rows} total rows to process.")
     
+    # 1. Initialize YOLOv8 for spatial gating
     print("[Initialization] Loading YOLOv8 localization weights...")
     yolo_model = YOLO("yolov8n.pt")
-    animal_classes = [15, 16, 17, 18, 19, 20, 21, 22, 23]
     
+    # Native COCO biological IDs that YOLO pre-trained weights recognize as living creatures
+    COCO_ANIMAL_CLASSES = [15, 16, 17, 18, 19, 20, 21, 22, 23]
+    
+    # 2. Initialize BiRefNet for edge matting
     print("[Initialization] Staging local BiRefNet model on GPU accelerator...")
     provider_options = [{"device_id": "0"}]
     sod_session = new_session(
@@ -56,21 +62,28 @@ def execute_production_pipeline():
     saved_count = 0
     skipped_empty_count = 0
     
-    print(f"\n[Pipeline] Initiating non-capped extraction loop across entire manifest...")
+    print(f"\n[Pipeline] Running extraction loop. Saving results to: {HYBRID_OUTPUT_DIR}")
     
-    # Progress bar now tracks the entire manifest rows sequentially
+    # Progress bar tracks manifest row index
     pbar = tqdm(total=total_rows, desc="Processing Dataset Rows")
     
     for idx, row in df.iterrows():
-        pbar.update(1) # Move the progress bar with every row inspected
+        pbar.update(1)
         
         file_name = row['file_name']
         source = row['dataset_source']
         
-        # Explicit guardrail to skip empty control tracks recorded in manifest
-        if str(source).lower() == 'empty':
-            skipped_empty_count += 1
-            continue
+        # --- TECHNICAL GUARDRAIL 1: MANIFEST-BASED METADATA FILTER ---
+        # Assuming your column is named 'id' or 'category_id'. Change 'id' to match your column name if needed.
+        # If class mapping is 0, it is known empty. Skip instantly to save GPU cycles.
+        try:
+            class_id = int(row['category_id'])
+            if class_id == 0:
+                skipped_empty_count += 1
+                continue
+        except (KeyError, ValueError):
+            # If the specific 'id' column isn't found, safely fall back entirely to YOLO's visual filter
+            pass
             
         animal_class_label = "wolf" if source == "idaho_wolf" else "wildlife_subject"
         base_dir = IWILDCAM_RAW_DIR if source == 'iwildcam' else IDAHO_RAW_DIR
@@ -83,7 +96,7 @@ def execute_production_pipeline():
             with Image.open(img_path).convert('RGB') as img:
                 w, h = img.size
                 
-                # --- STAGE 1: LOCALIZATION VALIDATION ---
+                # --- STAGE 1: CLASS-AGNOSTIC LOCALIZATION ---
                 yolo_results = yolo_model(img, verbose=False)
                 best_box = None
                 highest_conf = -1.0
@@ -93,16 +106,19 @@ def execute_production_pipeline():
                         for box in result.boxes:
                             cls_id = int(box.cls[0].item())
                             conf = box.conf[0].item()
-                            if cls_id in animal_classes and conf > highest_conf:
+                            
+                            # Checks if YOLO recognizes ANY biological animal, ignoring custom CSV values
+                            if cls_id in COCO_ANIMAL_CLASSES and conf > highest_conf:
                                 highest_conf = conf
                                 best_box = box.xyxy[0].cpu().numpy()
                 
-                # Filter out blank images dynamically if YOLO confidence falls short
+                # --- TECHNICAL GUARDRAIL 2: YOLO CONFIDENCE FILTER ---
+                # Trashes image dynamically if no biological subject is found above 40% confidence
                 if best_box is None or highest_conf < 0.40:
                     skipped_empty_count += 1
                     continue
                 
-                # --- STAGE 2: ROIs & FINE MATTING ---
+                # --- STAGE 2: TIGHT CROP WITH CONTEXT BUFFER ---
                 xmin, ymin, xmax, ymax = best_box
                 pad_w = (xmax - xmin) * 0.10
                 pad_h = (ymax - ymin) * 0.10
@@ -115,10 +131,14 @@ def execute_production_pipeline():
                 )
                 coarse_crop = img.crop(crop_box)
                 
+                # --- STAGE 3: FINE MATTING & EDGE HARDENING ---
                 rgba_output = remove(coarse_crop, session=sod_session)
                 r, g, b, a = rgba_output.split()
                 
+                # Convert alpha mask to NumPy array for threshold operations
                 alpha_array = np.array(a)
+                
+                # STEP FUNCTION: Binarizes mask to force sharp borders and delete fuzzy edges
                 hard_alpha_array = np.where(alpha_array > 128, 255, 0).astype(np.uint8)
                 hard_alpha_channel = Image.fromarray(hard_alpha_array)
                 
@@ -139,9 +159,10 @@ def execute_production_pipeline():
     print("\n=====================================================================")
     print("                PRODUCTION EXTRACTOR PROCESSING COMPLETE             ")
     print("=====================================================================")
-    print(f"Total Profiles Saved to Disk:  {saved_count}")
-    print(f"Total Skipped (Blank/Noise):   {skipped_empty_count}")
+    print(f"Total Profiles Saved to Disk (v2): {saved_count}")
+    print(f"Total Skipped (Blank/Noise/ID 0):  {skipped_empty_count}")
+    print(f"Output Directory Location:         {HYBRID_OUTPUT_DIR}")
     print("=====================================================================")
 
 if __name__ == "__main__":
-    execute_production_pipeline()
+    execute_upgraded_production_pipeline()

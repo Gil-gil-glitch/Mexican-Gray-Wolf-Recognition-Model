@@ -18,16 +18,13 @@ from PIL import Image
 from tqdm import tqdm
 from ultralytics import YOLO
 
-# =====================================================================
-# SYSTEM CONFIGURATION
-# =====================================================================
+
 TRAIN_MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/final_train_manifest.csv")
 VAL_MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/final_val_manifest.csv")
 
 IWILDCAM_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/train_images")
 IDAHO_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
 
-# Where the binary pseudo-label masks will live
 MASK_OUTPUT_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_masks")
 MASK_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
