@@ -12,7 +12,7 @@ from ultralytics import YOLO
 from models import OSegNet
 
 
-TRAIN_MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/final_train_manifest.csv")
+TRAIN_MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_final_train_manifest.csv")
 IWILDCAM_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/train_images")
 IDAHO_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
 WEIGHTS_PATH = "/home/greatgilbertsoco/WolfDetect/code/osegnet_weights.pth"
@@ -100,7 +100,7 @@ class OSegNetInferenceWrapper:
 # =====================================================================
 # EVALUATION MATRIX PIPELINE
 # =====================================================================
-def run_evaluation_comparison(sample_count=10):
+def run_evaluation_comparison(sample_count=20):
     if not TRAIN_MANIFEST_PATH.exists():
         print(f"[Error] Blueprint manifest not found at {TRAIN_MANIFEST_PATH}")
         return
@@ -109,15 +109,40 @@ def run_evaluation_comparison(sample_count=10):
     yolo_model = YOLO("yolov8n.pt")
     animal_classes = [15, 16, 17, 18, 19, 20, 21, 22, 23]
     
-    print("[Initialization] Loading Custom Custom O-SegNet layers...")
+    print("[Initialization] Loading Custom O-SegNet layers...")
     oseg_model = OSegNetInferenceWrapper(WEIGHTS_PATH)
     
-    # Read manifest and draw sample rows for visualization
+    # =====================================================================
+    # SMART FILTERING ENGINE (Replaces the random sampler)
+    # =====================================================================
+    print("[Data Filter] Scanning manifest to eliminate empty camera triggers...")
     df = pd.read_csv(TRAIN_MANIFEST_PATH)
-    samples = df.sample(n=sample_count, random_state=42)
+    active_mask_directory = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_masks")
     
+    positive_samples = []
+    # Iterate through manifest to find rows with non-empty pseudo-masks
+    for idx, row in df.iterrows():
+        mask_path = active_mask_directory / row['pseudo_mask_name']
+        if mask_path.exists():
+            mask_data = np.load(mask_path)
+            # Threshold: ensure at least 200 pixels belong to an active animal subject
+            if np.sum(mask_data) > 200:
+                positive_samples.append(row)
+                if len(positive_samples) >= sample_count:
+                    break
+                    
+    if len(positive_samples) == 0:
+        print("[Error] No positive animal profiles found in pseudo_masks directory.")
+        return
+        
+    samples = pd.DataFrame(positive_samples)
+    print(f"[Data Filter] Successfully isolated {len(samples)} valid animal profiles for evaluation.")
+    
+    # =====================================================================
+    # THE INFRASTRUCTURE EXECUTION LOOP (Keep this exactly as it was)
+    # =====================================================================
     metrics = []
-    print(f"\n[Running Execution] Testing {sample_count} samples across both architectures...\n")
+    print(f"\n[Running Execution] Testing {len(samples)} targeted samples across both architectures...\n")
     
     for idx, row in samples.iterrows():
         file_name = row['file_name']
@@ -131,9 +156,7 @@ def run_evaluation_comparison(sample_count=10):
         with Image.open(full_path).convert('RGB') as img:
             w, h = img.size
             
-            # -------------------------------------------------------------
-            # METRIC TRACKING: YOLOv8 APPROACH
-            # -------------------------------------------------------------
+            # 1. METRIC TRACKING: YOLOv8 APPROACH
             start_time = time.time()
             yolo_results = yolo_model(img, verbose=False)
             best_box = None
@@ -158,19 +181,13 @@ def run_evaluation_comparison(sample_count=10):
                 
             yolo_squared = pad_to_square(yolo_crop)
             yolo_time = time.time() - start_time
-            
-            # Save YOLO Output
             yolo_squared.save(YOLO_OUT_DIR / f"yolo_{source}_{Path(file_name).name}")
             
-            # -------------------------------------------------------------
-            # METRIC TRACKING: CUSTOM O-SEGNET
-            # -------------------------------------------------------------
+            # 2. METRIC TRACKING: CUSTOM O-SEGNET
             start_time = time.time()
             oseg_crop, oseg_status = oseg_model.get_crop(img)
             oseg_squared = pad_to_square(oseg_crop)
             oseg_time = time.time() - start_time
-            
-            # Save O-SegNet Output
             oseg_squared.save(OSEG_OUT_DIR / f"oseg_{source}_{Path(file_name).name}")
             
             # Append record
@@ -197,4 +214,4 @@ def run_evaluation_comparison(sample_count=10):
 
 
 if __name__ == "__main__":
-    run_evaluation_comparison(sample_count=10)
+    run_evaluation_comparison(sample_count=30)
