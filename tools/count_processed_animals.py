@@ -26,12 +26,12 @@ def analyze_active_crops():
     print("Reading manifest mapping...")
     df = pd.read_csv(MANIFEST_PATH)
     
-    # Standardize column types for safe lookups (adjust 'id' if your column has a different name)
-    df['id'] = df['id'].astype(int)
+    # Standardize column types for safe lookups (adjust 'category_id' if your column has a different name)
+    df['category_id'] = df['category_id'].astype(int)
     
     # Create a quick lookup dictionary: {file_name: species_id}
     # This makes the execution instantaneous even with 160,000 rows
-    manifest_lookup = dict(zip(df['file_name'], df['id']))
+    manifest_lookup = dict(zip(df['file_name'], df['category_id']))
 
     # 2. Scan the current files in your active output folder
     print("Scanning active output directory...")
