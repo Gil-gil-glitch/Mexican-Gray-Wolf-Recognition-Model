@@ -28,9 +28,9 @@ IDAHO_RAW_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
 HYBRID_OUTPUT_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/hybrid_crops")
 HYBRID_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-def execute_non_empty_pipeline(target_count=20):
+def execute_production_pipeline():
     print("=====================================================================")
-    print("      NON-EMPTY CASCADED PIPELINE: VALIDATED WILDLIFE SUBJECTS      ")
+    print("         PRODUCTION MODE: FULL DATASET CASCADED EXTRACTION           ")
     print("=====================================================================")
     
     if not MANIFEST_PATH.exists():
@@ -38,14 +38,13 @@ def execute_non_empty_pipeline(target_count=20):
         return
         
     df = pd.read_csv(MANIFEST_PATH)
-    print(f"[Manifest] Loaded {len(df)} total rows.")
+    total_rows = len(df)
+    print(f"[Manifest] Loaded {total_rows} total rows to process.")
     
-    # 1. Initialize YOLOv8 for spatial validation
     print("[Initialization] Loading YOLOv8 localization weights...")
     yolo_model = YOLO("yolov8n.pt")
-    animal_classes = [15, 16, 17, 18, 19, 20, 21, 22, 23] # COCO animal IDs
+    animal_classes = [15, 16, 17, 18, 19, 20, 21, 22, 23]
     
-    # 2. Initialize BiRefNet for fine matting
     print("[Initialization] Staging local BiRefNet model on GPU accelerator...")
     provider_options = [{"device_id": "0"}]
     sod_session = new_session(
@@ -57,17 +56,20 @@ def execute_non_empty_pipeline(target_count=20):
     saved_count = 0
     skipped_empty_count = 0
     
-    print(f"\n[Pipeline] Scanning for {target_count} non-empty animal profiles...")
+    print(f"\n[Pipeline] Initiating non-capped extraction loop across entire manifest...")
     
-    # Progress bar tracks verified saves, not raw rows
-    pbar = tqdm(total=target_count, desc="Extracting Foregrounds")
+    # Progress bar now tracks the entire manifest rows sequentially
+    pbar = tqdm(total=total_rows, desc="Processing Dataset Rows")
     
     for idx, row in df.iterrows():
+        pbar.update(1) # Move the progress bar with every row inspected
+        
         file_name = row['file_name']
         source = row['dataset_source']
         
-        # Meta-exclusion: Skip explicitly logged empty background tracks
+        # Explicit guardrail to skip empty control tracks recorded in manifest
         if str(source).lower() == 'empty':
+            skipped_empty_count += 1
             continue
             
         animal_class_label = "wolf" if source == "idaho_wolf" else "wildlife_subject"
@@ -81,7 +83,7 @@ def execute_non_empty_pipeline(target_count=20):
             with Image.open(img_path).convert('RGB') as img:
                 w, h = img.size
                 
-                # --- STAGE 1: METADATA / OBJECT VERIFICATION ---
+                # --- STAGE 1: LOCALIZATION VALIDATION ---
                 yolo_results = yolo_model(img, verbose=False)
                 best_box = None
                 highest_conf = -1.0
@@ -95,13 +97,12 @@ def execute_non_empty_pipeline(target_count=20):
                                 highest_conf = conf
                                 best_box = box.xyxy[0].cpu().numpy()
                 
-                # CRITICAL GUARDRAIL: If no animal passes our confidence score,
-                # it's treated as an empty frame/noise. Skip it entirely!
+                # Filter out blank images dynamically if YOLO confidence falls short
                 if best_box is None or highest_conf < 0.40:
                     skipped_empty_count += 1
                     continue
                 
-                # --- STAGE 2: TIGHT LOCALIZATION CROP ---
+                # --- STAGE 2: ROIs & FINE MATTING ---
                 xmin, ymin, xmax, ymax = best_box
                 pad_w = (xmax - xmin) * 0.10
                 pad_h = (ymax - ymin) * 0.10
@@ -114,12 +115,10 @@ def execute_non_empty_pipeline(target_count=20):
                 )
                 coarse_crop = img.crop(crop_box)
                 
-                # --- STAGE 3: FINE MATTING & EDGE HARDENING ---
                 rgba_output = remove(coarse_crop, session=sod_session)
                 r, g, b, a = rgba_output.split()
                 
                 alpha_array = np.array(a)
-                # Binarize mask to strip away blurry/feathered edge gradients entirely
                 hard_alpha_array = np.where(alpha_array > 128, 255, 0).astype(np.uint8)
                 hard_alpha_channel = Image.fromarray(hard_alpha_array)
                 
@@ -131,25 +130,18 @@ def execute_non_empty_pipeline(target_count=20):
                     save_name = f"hybrid_{animal_class_label}_{Path(file_name).name}"
                     save_path = HYBRID_OUTPUT_DIR / Path(save_name).with_suffix('.png')
                     tight_crop.save(save_path)
-                    
                     saved_count += 1
-                    pbar.update(1)
                     
         except Exception as e:
             continue
-
-        # Halt automatically once your target batch of real animals is processed
-        if saved_count >= target_count:
-            break
             
     pbar.close()
     print("\n=====================================================================")
-    print("                     PRODUCTION FILTER COMPLETE                      ")
+    print("                PRODUCTION EXTRACTOR PROCESSING COMPLETE             ")
     print("=====================================================================")
-    print(f"Verified Non-Empty Saves:      {saved_count}")
-    print(f"Skipped Empty/Noise Frames:    {skipped_empty_count}")
-    print(f"Output Directory Location:     {HYBRID_OUTPUT_DIR}")
+    print(f"Total Profiles Saved to Disk:  {saved_count}")
+    print(f"Total Skipped (Blank/Noise):   {skipped_empty_count}")
     print("=====================================================================")
 
 if __name__ == "__main__":
-    execute_non_empty_pipeline(target_count=50)
+    execute_production_pipeline()
