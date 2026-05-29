@@ -87,7 +87,7 @@ def run_pipeline_simulation():
     
     # Filter for rows that contain animals we want to test
     # (Excluding empty rows 0, prioritizing target canids 15, 11, 18)
-    test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=10, random_state=101)
+    test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=30, random_state=101)
     
     print("=====================================================================")
     print("                 LAUNCHING CASCADED PIPELINE SIMULATION              ")
@@ -98,7 +98,7 @@ def run_pipeline_simulation():
     for idx, row in test_candidates.iterrows():
         file_name = row['file_name']
         source = row['dataset_source']
-        true_id = int(row['id'])
+        true_id = int(row['category_id'])
         
         # Resolve true label string
         true_label = "Mexican Gray Wolf" if true_id == 15 else ("Coyote" if true_id == 11 else "Domestic Dog")
