@@ -1,7 +1,7 @@
 #
 ## baseline_trainer.py
 #
-#   This script serves as the foundational training loop for our wildlife classification model, utilizing a MobileNetV3-Small architecture. It is 
+# This script serves as the foundational training loop for our wildlife classification model, utilizing a MobileNetV3-Small architecture. It is 
 # designed to establish a performance baseline using the provided dataset of hybrid crops and raw images, with a specific focus on ensuring a 
 # balanced representation of empty frames to enhance the model's ability to distinguish between presence and absence of wildlife.
 #
