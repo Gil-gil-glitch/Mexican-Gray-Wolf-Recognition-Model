@@ -112,7 +112,7 @@ def run_pipeline_simulation():
         img_path = base_dir / file_name
 
         # Mapping for final output display
-        mapping = {15: 1, 11: 2, 18: 3}
+        mapping = {15: 1, 11: 2, 18: 3, 0: 0}
         true_mapped = mapping.get(true_id, 0) # Default to 0 (Empty) if not found
 
         
@@ -195,28 +195,32 @@ def run_pipeline_simulation():
                 all_true.append(true_mapped)
                 all_pred.append(final_pred_idx)
 
-                print("\n" + "="*50)
-                print("FINAL PERFORMANCE METRICS")
-                print("="*50)
-    
-                report = classification_report(all_true, all_pred, target_names=list(INVERSE_CLASS_MAP.values()))
-                print(report)
-                
-                acc = accuracy_score(all_true, all_pred)
-                print(f"Overall Accuracy: {acc*100:.2f}%")
 
                 # Print success tag
                 if final_pred_string == true_label:
                     print(" [MATCH STATUS]: CORRECT!")
                 else:
                     print(" [MATCH STATUS]: MISCLASSIFIED!")
-
+                    print("\n" + "="*50)
                 
                     
         except Exception as e:
             print(f" [CRITICAL PIPELINE ERROR]: Could not process sample image due to: {e}")
             continue
 
+     # Final Metrics Display after all samples processed
+    print("\n" + "="*50)
+    print("FINAL PERFORMANCE METRICS")
+    print("="*50)
+
+    report = classification_report(
+            all_true, 
+            all_pred, 
+            labels=[0, 1, 2, 3], 
+            target_names=list(INVERSE_CLASS_MAP.values()),
+            zero_division=0        
+    )
+    print(report)
 if __name__ == "__main__":
     import torch.nn.functional as F
     run_pipeline_simulation()
