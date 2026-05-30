@@ -94,6 +94,10 @@ def run_pipeline_simulation():
     all_true = []
     all_pred = []
 
+    # Counters
+    dropped_samples = 0
+    processed_samples = 0
+
     print("=====================================================================")
     print("                 LAUNCHING CASCADED PIPELINE SIMULATION              ")
     print("=====================================================================")
@@ -115,7 +119,6 @@ def run_pipeline_simulation():
         mapping = {15: 1, 11: 2, 18: 3, 0: 0}
         true_mapped = mapping.get(true_id, 0) # Default to 0 (Empty) if not found
 
-        
         if not img_path.exists():
             continue
             
@@ -145,6 +148,7 @@ def run_pipeline_simulation():
                 if best_box is None or highest_conf < 0.40:
                     print(f" -> [Stage 1 GATING]: No animal localized above 0.40 threshold (Max Conf: {highest_conf:.2f})")
                     print(f" >> FINAL PIPELINE PREDICTION: {INVERSE_CLASS_MAP[0]}")
+                    dropped_samples += 1
                     continue
                     
                 print(f" -> [Stage 1 PASSED]: Localized biological shape. Confidence: {highest_conf:.2f}")
@@ -170,6 +174,7 @@ def run_pipeline_simulation():
                 if not final_bbox:
                     print(" -> [Stage 2 MATTING]: Matting operations collapsed mask completely.")
                     print(f" >> FINAL PIPELINE PREDICTION: {INVERSE_CLASS_MAP[0]}")
+                    dropped_samples += 1
                     continue
                     
                 # Extract clean background removed tensor crop
@@ -203,7 +208,8 @@ def run_pipeline_simulation():
                     print(" [MATCH STATUS]: MISCLASSIFIED!")
                     print("\n" + "="*50)
                 
-                    
+            print(f"Pipeline Statistics: {processed_samples} Successes, {dropped_samples} Dropped.")
+
         except Exception as e:
             print(f" [CRITICAL PIPELINE ERROR]: Could not process sample image due to: {e}")
             continue
@@ -219,8 +225,12 @@ def run_pipeline_simulation():
             labels=[0, 1, 2, 3], 
             target_names=list(INVERSE_CLASS_MAP.values()),
             zero_division=0        
-    )
+        )
     print(report)
+
+    
+
+
 if __name__ == "__main__":
     import torch.nn.functional as F
     run_pipeline_simulation()
