@@ -88,7 +88,7 @@ def run_pipeline_simulation():
     
     # Filter for rows that contain animals we want to test
     # (Excluding empty rows 0, prioritizing target canids 15, 11, 18)
-    test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=30, random_state=101)
+    test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=100, random_state=101)
     
     # Metrics tracking
     all_true = []
@@ -193,7 +193,7 @@ def run_pipeline_simulation():
                 pred_conf_val = confidence.item() * 100
                 
                 processed_samples += 1
-                
+
                 print(f" -> [Stage 3 PASSED]: Spatial & Spectral texture attention vectors resolved.")
                 print(f" >> FINAL PIPELINE PREDICTION: {final_pred_string} ({pred_conf_val:.2f}% Confidence)")
                 
