@@ -24,12 +24,14 @@ from rembg import remove, new_session
 from torchvision import transforms
 from tqdm import tqdm
 
-# Import your custom network from Step 2
+# Import  custom network from Step 2
 from dual_attention_model import DualAttentionClassifier
 
-# =====================================================================
-# SYSTEM RESOURCE INITIALIZATION
-# =====================================================================
+# Stastics for final output mapping
+from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
+import torch.nn.functional as F
+
+# Respources
 MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_final_train_manifest.csv")
 RAW_IWILDCAM_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/train_images")
 RAW_IDAHO_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
@@ -82,13 +84,16 @@ def run_pipeline_simulation():
     if yolo_model is None:
         return
 
-    # Load master manifest rows to extract a test sample
     df = pd.read_csv(MANIFEST_PATH)
     
     # Filter for rows that contain animals we want to test
     # (Excluding empty rows 0, prioritizing target canids 15, 11, 18)
     test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=30, random_state=101)
     
+    # Metrics tracking
+    all_true = []
+    all_pred = []
+
     print("=====================================================================")
     print("                 LAUNCHING CASCADED PIPELINE SIMULATION              ")
     print("=====================================================================")
@@ -105,6 +110,11 @@ def run_pipeline_simulation():
         
         base_dir = RAW_IWILDCAM_DIR if source == 'iwildcam' else RAW_IDAHO_DIR
         img_path = base_dir / file_name
+
+        # Mapping for final output display
+        mapping = {15: 1, 11: 2, 18: 3}
+        true_mapped = mapping.get(true_id, 0) # Default to 0 (Empty) if not found
+
         
         if not img_path.exists():
             continue
@@ -180,11 +190,28 @@ def run_pipeline_simulation():
                 print(f" -> [Stage 3 PASSED]: Spatial & Spectral texture attention vectors resolved.")
                 print(f" >> FINAL PIPELINE PREDICTION: {final_pred_string} ({pred_conf_val:.2f}% Confidence)")
                 
+                # Track metrics
+                final_pred_idx = predicted_idx.item()
+                all_true.append(true_mapped)
+                all_pred.append(final_pred_idx)
+
+                print("\n" + "="*50)
+                print("FINAL PERFORMANCE METRICS")
+                print("="*50)
+    
+                report = classification_report(all_true, all_pred, target_names=list(INVERSE_CLASS_MAP.values()))
+                print(report)
+                
+                acc = accuracy_score(all_true, all_pred)
+                print(f"Overall Accuracy: {acc*100:.2f}%")
+
                 # Print success tag
                 if final_pred_string == true_label:
                     print(" [MATCH STATUS]: CORRECT!")
                 else:
                     print(" [MATCH STATUS]: MISCLASSIFIED!")
+
+                
                     
         except Exception as e:
             print(f" [CRITICAL PIPELINE ERROR]: Could not process sample image due to: {e}")
