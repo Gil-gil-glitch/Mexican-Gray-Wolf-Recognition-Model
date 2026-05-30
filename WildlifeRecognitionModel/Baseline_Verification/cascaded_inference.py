@@ -192,6 +192,8 @@ def run_pipeline_simulation():
                 final_pred_string = INVERSE_CLASS_MAP[predicted_idx.item()]
                 pred_conf_val = confidence.item() * 100
                 
+                processed_samples += 1
+                
                 print(f" -> [Stage 3 PASSED]: Spatial & Spectral texture attention vectors resolved.")
                 print(f" >> FINAL PIPELINE PREDICTION: {final_pred_string} ({pred_conf_val:.2f}% Confidence)")
                 
