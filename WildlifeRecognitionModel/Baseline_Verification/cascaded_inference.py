@@ -98,6 +98,10 @@ def run_pipeline_simulation():
     dropped_samples = 0
     processed_samples = 0
 
+
+    # Dropped samples
+    dropped_files = []
+
     print("=====================================================================")
     print("                 LAUNCHING CASCADED PIPELINE SIMULATION              ")
     print("=====================================================================")
@@ -149,6 +153,7 @@ def run_pipeline_simulation():
                     print(f" -> [Stage 1 GATING]: No animal localized above 0.40 threshold (Max Conf: {highest_conf:.2f})")
                     print(f" >> FINAL PIPELINE PREDICTION: {INVERSE_CLASS_MAP[0]}")
                     dropped_samples += 1
+                    dropped_files.append(file_name)
                     continue
                     
                 print(f" -> [Stage 1 PASSED]: Localized biological shape. Confidence: {highest_conf:.2f}")
@@ -175,6 +180,7 @@ def run_pipeline_simulation():
                     print(" -> [Stage 2 MATTING]: Matting operations collapsed mask completely.")
                     print(f" >> FINAL PIPELINE PREDICTION: {INVERSE_CLASS_MAP[0]}")
                     dropped_samples += 1
+                    dropped_files.append(file_name)
                     continue
                     
                 # Extract clean background removed tensor crop
@@ -220,6 +226,13 @@ def run_pipeline_simulation():
     print("\n" + "="*50)
     print("FINAL PERFORMANCE METRICS")
     print("="*50)
+
+
+    # Dropped files summary
+    if dropped_files:
+        df_dropped = pd.DataFrame(dropped_files, columns=['dropped_file_names'])
+        df_dropped.to_csv("dropped_samples_log.csv", index=False)
+        print(f"\n[Note] {len(dropped_files)} samples dropped. Filenames saved to 'dropped_samples_log.csv'.")
 
     report = classification_report(
             all_true, 
