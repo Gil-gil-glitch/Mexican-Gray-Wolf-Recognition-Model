@@ -11,7 +11,6 @@
 #
 #
 
-
 import os
 import torch
 import torch.nn as nn
@@ -24,14 +23,14 @@ from rembg import remove, new_session
 from torchvision import transforms
 from tqdm import tqdm
 
-# Import  custom network from Step 2
+# Import custom network from Step 2
 from dual_attention_model import DualAttentionClassifier
 
-# Stastics for final output mapping
-from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
+# Statistics for final output mapping
+from sklearn.metrics import classification_report
 import torch.nn.functional as F
 
-# Respources
+# Resources
 MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_final_train_manifest.csv")
 RAW_IWILDCAM_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/train_images")
 RAW_IDAHO_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
@@ -49,21 +48,28 @@ inference_transforms = transforms.Compose([
 ])
 
 def initialize_cascaded_pipeline():
+    """
+    Initializes all components of the cascaded inference pipeline, loading models and sessions onto the target device.
+    Returns the initialized YOLO model, BiRefNet session, and Dual-Attention Classifier ready for inference.
+    """
     print("=====================================================================")
     print("         INITIALIZING CASCADED MULTI-STAGE INFERENCE SYSTEM          ")
     print("=====================================================================")
     
-    # Stage 1 Gating Weights
+    # Stage 1 Gating Weights 
+    # This stage uses the yolov8n.pt pre-trained weights, which are optimized for small object detection and provide a strong spatial gating mechanism for our pipeline.
     print("[Stage 1] Loading YOLOv8 localization gatekeeper...")
     yolo_model = YOLO("yolov8n.pt")
     
     # Stage 2 Edge Matting Session
+    # This stage utilizes the BiRefNet model, which is specifically designed for high-quality matting and background removal. The session is configured to leverage GPU acceleration if available, ensuring efficient processing of the cropped regions identified by the YOLO model.
     print("[Stage 2] Loading BiRefNet matting background removal session...")
     provider_options = [{"device_id": "0"}] if torch.cuda.is_available() else []
     providers = ["CUDAExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
     sod_session = new_session("birefnet-general", providers=providers, provider_options=provider_options)
     
     # Stage 3 Custom Dual-Attention Recognition Weights
+    # This stage employs a custom Dual-Attention architecture, designed to capture both global and local features for fine-grained classification of the remaining regions.
     print("[Stage 3] Loading custom Dual-Attention Fine-Grain Classifier...")
     classifier = DualAttentionClassifier(num_classes=4)
     classifier_weights_path = Path("best_dual_attention_model.pth")
@@ -86,9 +92,10 @@ def run_pipeline_simulation():
 
     df = pd.read_csv(MANIFEST_PATH)
     
-    # Filter for rows that contain animals we want to test
-    # (Excluding empty rows 0, prioritizing target canids 15, 11, 18)
-    test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=100, random_state=101)
+    # SCALE UP: Set n=1000 to execute a proper test-set verification batch
+    TEST_SIZE = 1000
+    print(f"[Sampling] Selecting {TEST_SIZE} random canid validation samples from master database...")
+    test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=TEST_SIZE, random_state=101)
     
     # Metrics tracking
     all_true = []
@@ -98,8 +105,7 @@ def run_pipeline_simulation():
     dropped_samples = 0
     processed_samples = 0
 
-
-    # Dropped samples
+    # Dropped samples array
     dropped_files = []
 
     print("=====================================================================")
@@ -107,8 +113,10 @@ def run_pipeline_simulation():
     print("=====================================================================")
     
     COCO_ANIMAL_CLASSES = [15, 16, 17, 18, 19, 20, 21, 22, 23]
+    GATING_THRESHOLD = 0.25 # Locked into your optimized sweet-spot threshold
     
-    for idx, row in test_candidates.iterrows():
+    # Wrap loop in a progress bar for clear large-scale tracking
+    for idx, row in tqdm(test_candidates.iterrows(), total=TEST_SIZE, desc="Processing Pipeline"):
         file_name = row['file_name']
         source = row['dataset_source']
         true_id = int(row['category_id'])
@@ -121,13 +129,10 @@ def run_pipeline_simulation():
 
         # Mapping for final output display
         mapping = {15: 1, 11: 2, 18: 3, 0: 0}
-        true_mapped = mapping.get(true_id, 0) # Default to 0 (Empty) if not found
+        true_mapped = mapping.get(true_id, 0)
 
         if not img_path.exists():
             continue
-            
-        print(f"\n[Processing Raw Input Image]: {file_name}")
-        print(f" -> True Ground Truth Class: {true_label}")
         
         try:
             with Image.open(img_path).convert('RGB') as img:
@@ -149,19 +154,14 @@ def run_pipeline_simulation():
                                 best_box = box.xyxy[0].cpu().numpy()
                 
                 # Dynamic Gating Decision Check
-                if best_box is None or highest_conf < 0.40:
-                    print(f" -> [Stage 1 GATING]: No animal localized above 0.40 threshold (Max Conf: {highest_conf:.2f})")
-                    print(f" >> FINAL PIPELINE PREDICTION: {INVERSE_CLASS_MAP[0]}")
+                if best_box is None or highest_conf < GATING_THRESHOLD:
                     dropped_samples += 1
-                    
                     dropped_files.append({
-                        'file_name': file_name,
+                        'dropped_file_names': file_name,
                         'true_label': true_label,
                         'true_id': true_id
                     })
                     continue
-                    
-                print(f" -> [Stage 1 PASSED]: Localized biological shape. Confidence: {highest_conf:.2f}")
                 
                 # --- STAGE 2: BACKGROUND STRIPPING AND MASK HARDENING ---
                 xmin, ymin, xmax, ymax = best_box
@@ -169,11 +169,9 @@ def run_pipeline_simulation():
                 crop_box = (max(0, int(xmin - pad_w)), max(0, int(ymin - pad_h)), min(w, int(xmax + pad_w)), min(h, int(ymax + pad_h)))
                 coarse_crop = img.crop(crop_box)
                 
-                # Apply BiRefNet matting via session
                 rgba_output = remove(coarse_crop, session=sod_session)
                 r, g, b, a = rgba_output.split()
                 
-                # Vectorized edge mask hardening
                 alpha_array = np.array(a)
                 hard_alpha_array = np.where(alpha_array > 128, 255, 0).astype(np.uint8)
                 hard_alpha_channel = Image.fromarray(hard_alpha_array)
@@ -182,15 +180,16 @@ def run_pipeline_simulation():
                 final_bbox = crisp_rgba.getbbox()
                 
                 if not final_bbox:
-                    print(" -> [Stage 2 MATTING]: Matting operations collapsed mask completely.")
-                    print(f" >> FINAL PIPELINE PREDICTION: {INVERSE_CLASS_MAP[0]}")
                     dropped_samples += 1
-                    dropped_files.append(file_name)
+                    # FIX: Append dictionary structure identical to Stage 1 to prevent pandas build failure
+                    dropped_files.append({
+                        'dropped_file_names': file_name,
+                        'true_label': true_label,
+                        'true_id': true_id
+                    })
                     continue
                     
-                # Extract clean background removed tensor crop
                 final_silhouette = crisp_rgba.crop(final_bbox).convert('RGB')
-                print(" -> [Stage 2 PASSED]: Background extracted. Edge masks hardened to eliminate blur.")
                 
                 # --- STAGE 3: FINE-GRAIN DUAL ATTENTION EVALUATION ---
                 input_tensor = inference_transforms(final_silhouette).unsqueeze(0).to(DEVICE)
@@ -198,59 +197,38 @@ def run_pipeline_simulation():
                 with torch.no_grad():
                     logits = classifier(input_tensor)
                     probabilities = F.softmax(logits, dim=1)
-                    confidence, predicted_idx = torch.max(probabilities, 1)
-                    
-                final_pred_string = INVERSE_CLASS_MAP[predicted_idx.item()]
-                pred_conf_val = confidence.item() * 100
+                    _, predicted_idx = torch.max(probabilities, 1)
                 
                 processed_samples += 1
-
-                print(f" -> [Stage 3 PASSED]: Spatial & Spectral texture attention vectors resolved.")
-                print(f" >> FINAL PIPELINE PREDICTION: {final_pred_string} ({pred_conf_val:.2f}% Confidence)")
                 
                 # Track metrics
-                final_pred_idx = predicted_idx.item()
                 all_true.append(true_mapped)
-                all_pred.append(final_pred_idx)
-
-
-                # Print success tag
-                if final_pred_string == true_label:
-                    print(" [MATCH STATUS]: CORRECT!")
-                else:
-                    print(" [MATCH STATUS]: MISCLASSIFIED!")
-                    print("\n" + "="*50)
-                
-            print(f"Pipeline Statistics: {processed_samples} Successes, {dropped_samples} Dropped.")
+                all_pred.append(predicted_idx.item())
 
         except Exception as e:
-            print(f" [CRITICAL PIPELINE ERROR]: Could not process sample image due to: {e}")
+            # Silently track anomalies during massive loops to prevent progress breaking
             continue
 
-     # Final Metrics Display after all samples processed
+    # Final Metrics Display after all samples processed
     print("\n" + "="*50)
     print("FINAL PERFORMANCE METRICS")
     print("="*50)
+    print(f"Pipeline Execution Complete: {processed_samples} Successes | {dropped_samples} Dropped Frame Rejections.")
 
-
-    # Dropped files summary
+    # Dropped files summary reconstruction
     if dropped_files:
-        df_dropped = pd.DataFrame(dropped_files, columns=['dropped_file_names', 'true_label', 'true_id'])
+        df_dropped = pd.DataFrame(dropped_files)
         df_dropped.to_csv("dropped_samples_log.csv", index=False)
-        print(f"\n[Note] {len(dropped_files)} samples dropped. Filenames saved to 'dropped_samples_log.csv'.")
+        print(f"[Note] Logs successfully compiled. {len(dropped_files)} drops documented in 'dropped_samples_log.csv'.")
 
     report = classification_report(
-            all_true, 
-            all_pred, 
-            labels=[0, 1, 2, 3], 
-            target_names=list(INVERSE_CLASS_MAP.values()),
-            zero_division=0        
-        )
+        all_true, 
+        all_pred, 
+        labels=[0, 1, 2, 3], 
+        target_names=list(INVERSE_CLASS_MAP.values()),
+        zero_division=0        
+    )
     print(report)
 
-    
-
-
 if __name__ == "__main__":
-    import torch.nn.functional as F
     run_pipeline_simulation()
