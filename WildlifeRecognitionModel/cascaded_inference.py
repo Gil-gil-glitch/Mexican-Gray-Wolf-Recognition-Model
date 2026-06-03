@@ -229,6 +229,5 @@ def run_pipeline_simulation():
         zero_division=0        
     )
     print(report)
-
 if __name__ == "__main__":
     run_pipeline_simulation()
