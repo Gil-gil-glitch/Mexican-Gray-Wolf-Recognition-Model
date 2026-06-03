@@ -92,8 +92,8 @@ def run_pipeline_simulation():
 
     df = pd.read_csv(MANIFEST_PATH)
     
-    # SCALE UP: Set n=1000 to execute a proper test-set verification batch
-    TEST_SIZE = 1000
+    # SCALE UP: Set n=10000 to execute a proper test-set verification batch
+    TEST_SIZE = 10000
     print(f"[Sampling] Selecting {TEST_SIZE} random canid validation samples from master database...")
     test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=TEST_SIZE, random_state=101)
     
