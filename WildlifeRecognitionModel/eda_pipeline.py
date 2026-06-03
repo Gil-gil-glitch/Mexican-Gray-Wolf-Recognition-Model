@@ -5,7 +5,7 @@ from pathlib import Path
 # PATH CONFIGURATION
 # =====================================================================
 MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_final_train_manifest.csv")
-DROPPED_LOG_PATH = Path("dropped_samples_log.csv")
+DROPPED_LOG_PATH = Path("dynamic_dropped_samples_log.csv")
 
 def analyze_pipeline_leakage():
     print("=====================================================================")
