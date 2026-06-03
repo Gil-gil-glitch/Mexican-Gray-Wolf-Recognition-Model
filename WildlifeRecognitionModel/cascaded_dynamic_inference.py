@@ -93,8 +93,8 @@ def run_dynamic_pipeline():
 
     df = pd.read_csv(MANIFEST_PATH)
     
-    # Run on the exact same 1,000-sample validation slice to directly compare with your static baseline
-    TEST_SIZE = 1000
+    # Run on the exact same 10000-sample validation slice to directly compare with your static baseline
+    TEST_SIZE = 10000
     print(f"[Sample Isolation] Drawing standard {TEST_SIZE} sample target matrix...")
     test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=TEST_SIZE, random_state=101)
     
