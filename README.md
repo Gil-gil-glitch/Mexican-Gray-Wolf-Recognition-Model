@@ -32,6 +32,7 @@ Instead of forcing a single model to handle localization and fine-grained classi
 ├── o-segnet
 └── tools
     └── hash_counter.py
+```
 
 Data Notice: The raw image arrays and manifest .csv files from the Idaho Wolf Images and iWildCam repositories are excluded from this remote tracking due to extreme file size restrictions. All pipelines are designed to ingest data mapped to local storage paths
 
