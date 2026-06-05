@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 # Resources
 MANIFEST_PATH = Path("/home/greatgilbertsoco/WolfDetect/data/pseudo_final_train_manifest.csv")
-CROPS_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/hybrid_crops_v2")
+CROPS_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/hybrid_crops_v2") # Results from the hybrid_extractor pipeline
 RAW_IWILDCAM_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/train_images")
 RAW_IDAHO_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
 
@@ -42,6 +42,7 @@ class SpectralAttentionBlock(nn.Module):
     Implements a frequency-domain attention engine. It uses a 2D-DCT 
     pooling mechanism to capture fine high-frequency textures like fur.
     """
+
     def __init__(self, channels):
         super(SpectralAttentionBlock, self).__init__()
         self.fc = nn.Sequential(
@@ -86,7 +87,8 @@ class DualAttentionClassifier(nn.Module):
     """
     def __init__(self, num_classes=4):
         super(DualAttentionClassifier, self).__init__()
-        # Load lightweight edge-native backbone
+        
+        # Load base model
         base_model = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.DEFAULT)
         
         # Extract features right before the global pooling layer
@@ -109,22 +111,20 @@ class DualAttentionClassifier(nn.Module):
         )
 
     def forward(self, x):
-        # 1. Base spatial feature extraction
+        # Base spatial feature extraction
         features = self.backbone_features(x)
         
-        # 2. Parallel Attention Extraction & Fusion
+        # Parallel Attention Extraction & Fusion
         spec_feat = self.spectral_attention(features)
         spat_feat = self.spatial_attention(features)
         fused_features = spec_feat + spat_feat
         
-        # 3. Dense Classification
+        # Dense Classification
         pooled = self.global_pool(fused_features).view(fused_features.size(0), -1)
         logits = self.classifier(pooled)
         return logits
 
-# =====================================================================
-# BALANCED DATASET PIPELINE
-# =====================================================================
+# BALANCED DATASET: INJECTING EMPTY SAMPLES TO ENHANCE MODEL ROBUSTNESS
 class BalancedWildlifeDataset(Dataset):
     def __init__(self, manifest_df, crops_dir, transform=None):
         self.transform = transform
@@ -142,7 +142,7 @@ class BalancedWildlifeDataset(Dataset):
                 self.samples.append((file_path, CLASS_MAP[matched_id]))
                 
         total_foregrounds = len(self.samples)
-        target_empty_count = int(total_foregrounds * 0.15)
+        target_empty_count = int(total_foregrounds * 0.15) #0.15 is a reasonable ratio to inject empty samples without overwhelming the model with noise
         empty_rows = manifest_df[manifest_df['category_id'] == 0]
         
         injected_empty = 0
@@ -169,11 +169,9 @@ class BalancedWildlifeDataset(Dataset):
         except Exception:
             return torch.zeros(3, 224, 224), label
 
-# =====================================================================
-# OPTIMIZED TRAINING CONFIGURATION
-# =====================================================================
+# DATA AUGMENTATION & TRAINING PIPELINE
 train_transforms = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((224, 224)), # Standardized input size for MobileNetV3-Small
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(15),
     transforms.ColorJitter(brightness=0.2, contrast=0.2),
@@ -182,7 +180,7 @@ train_transforms = transforms.Compose([
 ])
 
 val_transforms = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((224, 224)), # Standardized input size for MobileNetV3-Small
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
