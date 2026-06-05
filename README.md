@@ -9,6 +9,8 @@ A multi-stage, cost-sensitive computer vision pipeline engineered to automate po
 
 Instead of forcing a single model to handle localization and fine-grained classification simultaneously, this system implements a strict three-stage cascaded inference framework optimized for edge deployment on low-power remote trail cameras.
 
+![Alt Text](Diagrams/System%20Design.png)
+
 1. Stage 1: Spatial Gating and Localization (YOLOv8) – Drops an anchor-free bounding box around regional areas of interest. Operates at an empirically calculated static threshold of 0.25 to filter out up to 90% of empty scenery frames early, saving massive computational overhead.
 
 2. Stage 2: Salient Edge Matting and Background Stripping (BiRefNet) – Extracts the bounding box crop and applies Salient Object Detection (SOD). Gradients are processed via a vectorized NumPy mask-hardener ($\alpha > 128$) to yield a single, cohesive animal silhouette. This successfully eliminates the structural fragmentation failures common in edge-discontinuity models like O-SegNet.
