@@ -2,8 +2,7 @@
 
 A multi-stage, cost-sensitive computer vision pipeline engineered to automate population monitoring of the endangered Mexican Gray Wolf (Canis lupus baileyi). The system addresses the dual challenges of extreme environmental noise (camouflage, dense brush, weather) and high phenotypic similarity among sympatric canids by decoupling spatial localization, salient background removal, and parallel dual-attention feature extraction.
 
-[INSERT IMAGE HERE]
-
+![Alt Text](Diagrams/loc_0086_im_003804.jpg)
 ---
 ## System Design and Architecture
 
