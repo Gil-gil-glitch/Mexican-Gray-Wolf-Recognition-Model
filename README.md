@@ -16,21 +16,22 @@ Instead of forcing a single model to handle localization and fine-grained classi
 3. Stage 3: Fine-Grained Classification (Dual-Attention Network) – Processes the clean silhouette through a parallel architecture. The Spatial Attention Head maps macro-skeletal proportions (snout-to-ear ratios) to combat partial out-of-frame occlusions, while the Spectral Attention Head operates in the frequency domain to track micro-biological cues (fur coat texture density, guard hair distributions).
 
 ## Repository Structure
+
+```text
 .
-├── BackgroundFilteringPipeline/    # Real-time cascaded execution engines & simulations
-│   ├── cascaded_inference.py       # Static 0.25 baseline testing suite
-│   └── cascaded_dynamic_inference.py # Class-weighted risk-aware adaptive pipeline
-├── WildlifeRecognitionModel/       # Custom neural network architecture & training loops
-│   ├── dual_attention_model.py     # Custom Spatial/Spectral Parallel Attention Network
-│   └── train.py                    # Optimization loop with Cosine Annealing learning rate
-├── UnifiedWildlifeDataset/         # Structural preprocessing, train/test splits, & RGB format normalization
-├── IdahoWolfCam/                   # Target domain exploratory data analysis (EDA) & snow bias logs
-├── iWildCam2019/                   # Secondary domain EDA & tropical foliage occlusion scripts
-├── o-segnet/                       # Benchmark scripts evaluating structural segmentation fragmentation
-├── SOD/                            # Salient Object Detection underlying module tests
-├── tools/                          # Utility functions
-│   └── hash_counter.py             # High-speed data-distribution validation mapping
-└── verify.venv/                    # Local environment validation (dependencies ignored via .gitignore)
+├── BackgroundFilteringPipeline
+│   ├── cascaded_dynamic_inference.py
+│   └── cascaded_inference.py
+├── IdahoWolfCam
+├── SOD
+├── UnifiedWildlifeDataset
+├── WildlifeRecognitionModel
+│   ├── dual_attention_model.py
+│   └── train.py
+├── iWildCam2019
+├── o-segnet
+└── tools
+    └── hash_counter.py
 
 Data Notice: The raw image arrays and manifest .csv files from the Idaho Wolf Images and iWildCam repositories are excluded from this remote tracking due to extreme file size restrictions. All pipelines are designed to ingest data mapped to local storage paths
 
