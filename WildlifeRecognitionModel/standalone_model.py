@@ -30,7 +30,7 @@ RAW_IDAHO_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/wolf_images")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Output mapping matching your network's 4 output logits
-INVERSE_CLASS_MAP = {0: "Empty Landscape", 1: "Mexican Gray Wolf", 2: "Coyote", 3: "Domestic Dog"}
+INVERSE_CLASS_MAP = {1: "Mexican Gray Wolf", 2: "Coyote", 3: "Domestic Dog"}
 CLASS_NAMES = list(INVERSE_CLASS_MAP.values())
 
 # Custom Image Transform matching your exact training validation configuration
@@ -46,7 +46,7 @@ def initialize_standalone_classifier():
     print("=====================================================================")
     
     print("[Target Initialization] Loading custom Dual-Attention Fine-Grain Classifier...")
-    classifier = DualAttentionClassifier(num_classes=4)
+    classifier = DualAttentionClassifier(num_classes=3)
     classifier_weights_path = Path("best_dual_attention_model.pth")
     
     if not classifier_weights_path.exists():
@@ -70,15 +70,8 @@ def run_standalone_evaluation():
     # 1. FIXED FILTER: Filter the data using the RAW category IDs present in your manifest
     TEST_SIZE = 10000
     print(f"[Sample Isolation] Drawing standard {TEST_SIZE} sample target matrix...")
-
-    sampled_dfs = []
-    for cat_id in [0, 11, 15, 18]:
-        sub_df = df[df['category_id'] == cat_id]
-        sample_n = min(len(sub_df), 500)  # Caps class weight balancing
-        sampled_dfs.append(sub_df.sample(n=sample_n, random_state=101))
+    test_candidates = df[df['category_id'].isin([11, 15, 18])].sample(n=TEST_SIZE, random_state=101)
     
-    test_candidates = pd.concat(sampled_dfs).sample(frac=1, random_state=101)
-        
     all_true = []
     all_pred = []
     processed_samples = 0
@@ -96,7 +89,7 @@ def run_standalone_evaluation():
         img_path = base_dir / file_name
 
         # 2. FIXED MAPPING: Convert raw COCO IDs into contiguous 0-3 indexes matching your classifier architecture
-        mapping = {0: 0, 15: 1, 11: 2, 18: 3}
+        mapping = {15: 1, 11: 2, 18: 3}
         true_mapped = mapping.get(true_id, 0)
 
         if not img_path.exists():
@@ -129,7 +122,7 @@ def run_standalone_evaluation():
     print("="*60)
     print(f"Evaluation Complete. Total Unsegmented Images Processed: {processed_samples}\n")
 
-    cm = confusion_matrix(all_true, all_pred, labels=[0, 1, 2, 3])
+    cm = confusion_matrix(all_true, all_pred, labels=[1, 2, 3])
     
     print("--- Detailed Confusion Matrix ---")
     header = f"Actual \\ Pred" + " " * 7 + "".join([f"{name:<22}" for name in CLASS_NAMES])
@@ -162,7 +155,7 @@ def run_standalone_evaluation():
     report = classification_report(
         all_true, 
         all_pred, 
-        labels=[0, 1, 2, 3], 
+        labels=[1, 2, 3], 
         target_names=CLASS_NAMES,
         zero_division=0        
     )
