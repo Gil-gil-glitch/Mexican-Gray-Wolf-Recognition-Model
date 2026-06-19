@@ -67,11 +67,18 @@ def run_standalone_evaluation():
 
     df = pd.read_csv(MANIFEST_PATH)
     
-    # Target the exact same 10,000-sample slice for alignment
+    # 1. FIXED FILTER: Filter the data using the RAW category IDs present in your manifest
     TEST_SIZE = 10000
     print(f"[Sample Isolation] Drawing standard {TEST_SIZE} sample target matrix...")
-    test_candidates = df[df['category_id'].isin([0, 11, 15, 18])].sample(n=TEST_SIZE, random_state=101)
+
+    sampled_dfs = []
+    for cat_id in [0, 11, 15, 18]:
+        sub_df = df[df['category_id'] == cat_id]
+        sample_n = min(len(sub_df), 500)  # Caps class weight balancing
+        sampled_dfs.append(sub_df.sample(n=sample_n, random_state=101))
     
+    test_candidates = pd.concat(sampled_dfs).sample(frac=1, random_state=101)
+        
     all_true = []
     all_pred = []
     processed_samples = 0
@@ -88,18 +95,15 @@ def run_standalone_evaluation():
         base_dir = RAW_IWILDCAM_DIR if source == 'iwildcam' else RAW_IDAHO_DIR
         img_path = base_dir / file_name
 
-        # Enforce structural mapping dictionary 
-        mapping = {15: 1, 11: 2, 18: 3, 0: 0}
+        # 2. FIXED MAPPING: Convert raw COCO IDs into contiguous 0-3 indexes matching your classifier architecture
+        mapping = {0: 0, 15: 1, 11: 2, 18: 3}
         true_mapped = mapping.get(true_id, 0)
 
         if not img_path.exists():
             continue
         
         try:
-            # --- BYPASS STAGES 1 & 2: Process Raw Image Directly ---
             with Image.open(img_path).convert('RGB') as raw_img:
-                
-                # Transform original uncropped, unsegmented picture
                 input_tensor = inference_transforms(raw_img).unsqueeze(0).to(DEVICE)
                 
                 with torch.no_grad():
@@ -125,7 +129,6 @@ def run_standalone_evaluation():
     print("="*60)
     print(f"Evaluation Complete. Total Unsegmented Images Processed: {processed_samples}\n")
 
-    # 1. Generate Raw Confusion Matrix
     cm = confusion_matrix(all_true, all_pred, labels=[0, 1, 2, 3])
     
     print("--- Detailed Confusion Matrix ---")
@@ -140,20 +143,18 @@ def run_standalone_evaluation():
     print("--- Per-Class False Positive Rate (FPR) Analysis ---")
     print("-"*60)
     
-    # 2. Extract Per-Class Parameters to derive False Positive Rates
     for idx, class_name in enumerate(CLASS_NAMES):
         tp = cm[idx, idx]
         fn = np.sum(cm[idx, :]) - tp
         fp = np.sum(cm[:, idx]) - tp
         tn = np.sum(cm) - (tp + fp + fn)
         
-        # FPR Calculation formula: FP / (FP + TN)
         fpr = (fp / (fp + tn)) * 100 if (fp + tn) > 0 else 0.0
         sensitivity = (tp / (tp + fn)) * 100 if (tp + fn) > 0 else 0.0
         
         print(f"Class [{class_name}]:")
         print(f"  - Standalone Accuracy/Recall: {sensitivity:.2f}%")
-        print(f"  - False Positive Rate (FPR):   {fpr:.2f}% (How often other classes/scenes tripped this label)")
+        print(f"  - False Positive Rate (FPR):   {fpr:.2f}%")
 
     print("\n" + "="*60)
     print("STANDARD CLASSIFICATION REPORT")
