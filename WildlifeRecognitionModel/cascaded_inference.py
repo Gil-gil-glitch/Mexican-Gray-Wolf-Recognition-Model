@@ -22,6 +22,8 @@ from ultralytics import YOLO
 from rembg import remove, new_session
 from torchvision import transforms
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 
 # Import custom network from Step 2
 from dual_attention_model import DualAttentionClassifier
@@ -229,5 +231,28 @@ def run_pipeline_simulation():
         zero_division=0        
     )
     print(report)
+
+    print(classification_report(all_true, all_pred, labels=[0, 1, 2, 3], 
+                                target_names=list(INVERSE_CLASS_MAP.values()), zero_division=0))
+
+    # Generate Confusion Matrix
+    cm = confusion_matrix(all_true, all_pred, labels=[0, 1, 2, 3])
+    
+    # Calculate False Positives (FP)
+    # FP for a class is the sum of the column minus the diagonal (true positive)
+    fp = cm.sum(axis=0) - np.diag(cm)
+    for i, label in INVERSE_CLASS_MAP.items():
+        print(f"False Positives for {label}: {fp[i]}")
+
+    # Plot and save the confusion matrix
+    fig, ax = plt.subplots(figsize=(10, 8))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(INVERSE_CLASS_MAP.values()))
+    disp.plot(cmap=plt.cm.Blues, ax=ax, xticks_rotation='vertical')
+    
+    plt.title("Cascaded Pipeline Confusion Matrix")
+    plt.tight_layout()
+    plt.savefig("confusion_matrix.png")
+    print("\n[Success] Confusion matrix saved as 'confusion_matrix.png'")
+
 if __name__ == "__main__":
     run_pipeline_simulation()
