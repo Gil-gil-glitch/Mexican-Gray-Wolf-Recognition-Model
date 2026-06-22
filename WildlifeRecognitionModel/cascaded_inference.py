@@ -165,51 +165,42 @@ def run_pipeline_simulation():
                         use_fallback = True
 
                 if use_fallback:
-                    # --- OPTION B: OPTIMIZED MULTI-REGION ANCHOR SLICING ---
-                    # Define 3 overlapping target zones (Center, Left, Right) at 65% scale
-                    crop_w = int(w * 0.65)
-                    crop_h = int(h * 0.65)
-                    y_top = int((h - crop_h) / 2)
-                    
-                    anchors = [
-                        ("center", int((w - crop_w) / 2), y_top), # Dead Center
-                        ("left_bank", 0, y_top),                  # Left Edge Flush
-                        ("right_bank", w - crop_w, y_top)         # Right Edge Flush
-                    ]
-                    
-                    best_fallback_idx = 0  # Default to empty landscape
-                    highest_fallback_prob = 0.0
-                    
-                    # Scan the anchors
-                    for name, x_left, y_top in anchors:
-                        region_crop = img.crop((x_left, y_top, x_left + crop_w, y_top + crop_h))
-                        input_tensor = inference_transforms(region_crop).unsqueeze(0).to(DEVICE)
+                    # --- OPTION B: ADVANCED SALIENT OBJECT DETECTOR FALLBACK ---
+                    # Instead of skipping background removal, leverage BiRefNet to find the animal without YOLO
+                    try:
+                        # Extract a generous 85% area to ensure a camouflaged animal isn't clipped
+                        crop_fraction = 0.85
+                        left = int((1 - crop_fraction) * w / 2)
+                        top = int((1 - crop_fraction) * h / 2)
+                        right = int((1 + crop_fraction) * w / 2)
+                        bottom = int((1 + crop_fraction) * h / 2)
+                        generous_crop = img.crop((left, top, right, bottom))
                         
-                        with torch.no_grad():
-                            logits = classifier(input_tensor)
-                            probs = F.softmax(logits, dim=1)
-                            max_prob, pred_idx = torch.max(probs, 1)
+                        # Let BiRefNet hunt for the silhouette directly from the noisy background
+                        rgba_output = remove(generous_crop, session=sod_session)
+                        r, g, b, a = rgba_output.split()
+                        
+                        alpha_array = np.array(a)
+                        hard_alpha_array = np.where(alpha_array > 128, 255, 0).astype(np.uint8)
+                        hard_alpha_channel = Image.fromarray(hard_alpha_array)
+                        
+                        crisp_rgba = Image.merge("RGBA", (r, g, b, hard_alpha_channel))
+                        final_bbox = crisp_rgba.getbbox()
+                        
+                        if final_bbox:
+                            final_silhouette = crisp_rgba.crop(final_bbox).convert('RGB')
+                            soft_gate_fallback_activations += 1
+                        else:
+                            # Catastrophic fallback if matting finds absolutely nothing
+                            final_silhouette = generous_crop.convert('RGB')
+                            soft_gate_fallback_activations += 1
                             
-                            # If a region confidently identifies an animal (1, 2, or 3), prioritize it!
-                            if pred_idx.item() > 0:
-                                # Weight animal detections higher than empty landscape predictions
-                                score = max_prob.item() + 1.0 
-                            else:
-                                score = max_prob.item()
-                                
-                            if score > highest_fallback_prob:
-                                highest_fallback_prob = score
-                                best_fallback_idx = pred_idx.item()
-                    
-                    predicted_idx = torch.tensor([best_fallback_idx], device=DEVICE)
-                    soft_gate_fallback_activations += 1
-                    
-                    # Skip standard Stage 3 evaluation since we ran ensemble evaluation here
-                    total_processed += 1
-                    all_true.append(true_mapped)
-                    all_pred.append(predicted_idx.item())
-                    continue
-
+                    except Exception:
+                        # Safety net fallback
+                        final_silhouette = img.resize((224, 224))
+                        soft_gate_fallback_activations += 1
+                        print(f"[Fallback] Utilized safety net for {file_name}")
+                        
                 # --- STAGE 3: FINE-GRAIN DUAL ATTENTION EVALUATION ---
                 input_tensor = inference_transforms(final_silhouette).unsqueeze(0).to(DEVICE)
                 
