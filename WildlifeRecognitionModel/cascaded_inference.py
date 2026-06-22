@@ -165,16 +165,50 @@ def run_pipeline_simulation():
                         use_fallback = True
 
                 if use_fallback:
-                    # --- OPTION B: OPTIMIZED SOFT-GATE FALLBACK ROUTE ---
-                    # Extract a standard 70% center crop to bypass background noise while retaining subjects
-                    crop_fraction = 0.70
-                    left = int((1 - crop_fraction) * w / 2)
-                    top = int((1 - crop_fraction) * h / 2)
-                    right = int((1 + crop_fraction) * w / 2)
-                    bottom = int((1 + crop_fraction) * h / 2)
+                    # --- OPTION B: OPTIMIZED MULTI-REGION ANCHOR SLICING ---
+                    # Define 3 overlapping target zones (Center, Left, Right) at 65% scale
+                    crop_w = int(w * 0.65)
+                    crop_h = int(h * 0.65)
+                    y_top = int((h - crop_h) / 2)
                     
-                    final_silhouette = img.crop((left, top, right, bottom))
+                    anchors = [
+                        ("center", int((w - crop_w) / 2), y_top), # Dead Center
+                        ("left_bank", 0, y_top),                  # Left Edge Flush
+                        ("right_bank", w - crop_w, y_top)         # Right Edge Flush
+                    ]
+                    
+                    best_fallback_idx = 0  # Default to empty landscape
+                    highest_fallback_prob = 0.0
+                    
+                    # Scan the anchors
+                    for name, x_left, y_top in anchors:
+                        region_crop = img.crop((x_left, y_top, x_left + crop_w, y_top + crop_h))
+                        input_tensor = inference_transforms(region_crop).unsqueeze(0).to(DEVICE)
+                        
+                        with torch.no_grad():
+                            logits = classifier(input_tensor)
+                            probs = F.softmax(logits, dim=1)
+                            max_prob, pred_idx = torch.max(probs, 1)
+                            
+                            # If a region confidently identifies an animal (1, 2, or 3), prioritize it!
+                            if pred_idx.item() > 0:
+                                # Weight animal detections higher than empty landscape predictions
+                                score = max_prob.item() + 1.0 
+                            else:
+                                score = max_prob.item()
+                                
+                            if score > highest_fallback_prob:
+                                highest_fallback_prob = score
+                                best_fallback_idx = pred_idx.item()
+                    
+                    predicted_idx = torch.tensor([best_fallback_idx], device=DEVICE)
                     soft_gate_fallback_activations += 1
+                    
+                    # Skip standard Stage 3 evaluation since we ran ensemble evaluation here
+                    total_processed += 1
+                    all_true.append(true_mapped)
+                    all_pred.append(predicted_idx.item())
+                    continue
 
                 # --- STAGE 3: FINE-GRAIN DUAL ATTENTION EVALUATION ---
                 input_tensor = inference_transforms(final_silhouette).unsqueeze(0).to(DEVICE)
