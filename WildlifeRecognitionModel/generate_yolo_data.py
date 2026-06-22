@@ -32,7 +32,7 @@ IDAHO_JSON = Path("/home/greatgilbertsoco/WolfDetect/data/idaho-camera-traps.jso
 OUTPUT_DIR = Path("/home/greatgilbertsoco/WolfDetect/data/yolo_gatekeeper")
 
 def load_bbox_lookup_maps():
-    """Builds an efficient filename -> bbox lookup from original source COCO JSONs"""
+    """Builds an efficient clean-filename -> bbox lookup from original source COCO JSONs"""
     bbox_map = {}
     
     # Parse iWildCam BBoxes if json exists
@@ -40,26 +40,26 @@ def load_bbox_lookup_maps():
         print("[Setup] Indexing iWildCam bounding boxes...")
         with open(IWILDCAM_JSON, 'r') as f:
             data = json.load(f)
-        # Map image_id to its bboxes
-        img_id_to_file = {img['id']: img['file_name'] for img in data['images']}
+        # Map image_id to its base file name
+        img_id_to_file = {img['id']: Path(img['file_name']).name for img in data['images']}
         for ann in data['annotations']:
             if 'bbox' in ann and ann['image_id'] in img_id_to_file:
-                f_name = img_id_to_file[ann['image_id']]
-                bbox_map[f"iwildcam_{f_name}"] = ann['bbox']
+                base_name = img_id_to_file[ann['image_id']]
+                bbox_map[f"iwildcam_{base_name}"] = ann['bbox']
 
     # Parse Idaho BBoxes if json exists
     if IDAHO_JSON.exists():
         print("[Setup] Indexing Idaho Camera Trap bounding boxes...")
         with open(IDAHO_JSON, 'r') as f:
             data = json.load(f)
-        img_id_to_file = {img['id']: img['file_name'] for img in data['images']}
+        # Force extracting only the final filename stem + extension (stripping 'loc_0000/')
+        img_id_to_file = {img['id']: Path(img['file_name']).name for img in data['images']}
         for ann in data['annotations']:
             if 'bbox' in ann and ann['image_id'] in img_id_to_file:
-                f_name = img_id_to_file[ann['image_id']]
-                bbox_map[f"idaho_{f_name}"] = ann['bbox']
+                base_name = img_id_to_file[ann['image_id']]
+                bbox_map[f"idaho_{base_name}"] = ann['bbox']
                 
     return bbox_map
-
 def convert_to_yolo_bbox(img_width, img_height, coco_bbox):
     """
     Converts COCO pixel format [xmin, ymin, width, height] 
@@ -119,9 +119,10 @@ def build_yolo_dataset():
             if not img_path.exists():
                 continue
                 
-            # Construct names matching lookup indexes
-            lookup_key = f"{source}_{file_name}"
-            unique_filename = f"{source}_{Path(file_name).name}"
+            # FIX: Ensure we match using the exact base filename string format 
+            clean_base_name = Path(file_name).name
+            lookup_key = f"{source}_{clean_base_name}"
+            unique_filename = f"{source}_{clean_base_name}"
             
             # Fetch coordinates
             coco_box = bbox_lookup.get(lookup_key)
