@@ -13,6 +13,14 @@ Instead of forcing a single model to handle localization and fine-grained classi
 
 1. **Stage 1: Spatial Gating and Localization (YOLOv8)** – Drops an anchor-free bounding box around regional areas of interest. Operates at an empirically calculated static threshold of `0.25` to filter out empty scenery frames early, saving massive computational overhead.
 2. **Stage 2: Salient Edge Matting and Background Stripping (BiRefNet)** – Extracts the region crop and applies Salient Object Detection (SOD). Gradients are processed via a vectorized NumPy mask-hardener ($\alpha > 128$) to yield a cohesive animal silhouette, eliminating structural fragmentation failures common in edge-discontinuity models.
+
+**Input Image before BiRefNet**
+![Alt Text](Diagrams/loc_0121_im_003724.jpg)
+
+
+**Actual Output Image after BiRefNet**
+![Alt Text](Diagrams/hybrid_wolf_loc_0121_im_003724.png)
+
 3. **Stage 3: Fine-Grained Classification (Dual-Attention Network)** – Processes the clean silhouette through a parallel architecture. The **Spatial Attention Head** maps macro-skeletal proportions (snout-to-ear ratios) to combat partial occlusions, while the **Spectral Attention Head** operates in the frequency domain to track micro-biological cues (fur coat texture density, guard hair distributions).
 
 ---
