@@ -36,7 +36,7 @@ opt2_r = [0.63, 0.77, 0.73]
 opt2_f1 = [0.75, 0.84, 0.81]
 
 # Set up the plotting style
-plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available() else 'default')
+plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
 fig, axs = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
 
 # ---------------------------------------------------------
