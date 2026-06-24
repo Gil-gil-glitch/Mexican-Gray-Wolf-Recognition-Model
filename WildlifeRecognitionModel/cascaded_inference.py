@@ -182,40 +182,29 @@ def run_pipeline_simulation():
                         alpha_array = np.array(a)
                         hard_alpha_array = np.where(alpha_array > 128, 255, 0).astype(np.uint8)
                         hard_alpha_channel = Image.fromarray(hard_alpha_array)
-                        
                         crisp_rgba = Image.merge("RGBA", (r, g, b, hard_alpha_channel))
+                        
                         final_bbox = crisp_rgba.getbbox()
                         
                         if final_bbox:
                             # Stream A: Full Silhouette bounding box (Captures macro skeletal proportions)
                             silhouette_a = crisp_rgba.crop(final_bbox).convert('RGB')
                             
-                            # Stream B: High-Resolution Texture Zoom (Captures micro fur patterns)
-                            # We extract a 50% sub-crop from the core center of the isolated silhouette canvas
-                            sil_w, sil_h = crisp_rgba.size
-                            crop_fraction_b = 0.50
-                            left_b = int((1 - crop_fraction_b) * sil_w / 2)
-                            top_b = int((1 - crop_fraction_b) * sil_h / 2)
-                            right_b = int((1 + crop_fraction_b) * sil_w / 2)
-                            bottom_b = int((1 + crop_fraction_b) * sil_h / 2)
-                            silhouette_b = crisp_rgba.crop((left_b, top_b, right_b, bottom_b)).convert('RGB')
-                        
-                        else:
-                            # Safe fallback to raw image crops if matting completely erases the subject
-                            silhouette_a = generous_crop.convert('RGB')
+                            full_black_canvas = Image.new("RGBA", (w, h), (0, 0, 0, 255))
                             
-                            crop_fraction_b = 0.45
-                            left_b = int((1 - crop_fraction_b) * w / 2)
-                            top_b = int((1 - crop_fraction_b) * h / 2)
-                            right_b = int((1 + crop_fraction_b) * w / 2)
-                            bottom_b = int((1 + crop_fraction_b) * h / 2)
-                            silhouette_b = img.crop((left_b, top_b, right_b, bottom_b)).convert('RGB')
-
-                        # Standardize and transform both streams into model-ready tensors
+                            # Paste the isolated silhouette back into its precise original pixel coordinates
+                            full_black_canvas.paste(crisp_rgba, (left, top), hard_alpha_channel)
+                            silhouette_b = full_black_canvas.convert('RGB')
+                        else:
+                            # Emergency duplicate fallback if matting turns up empty
+                            silhouette_a = generous_crop.convert('RGB')
+                            silhouette_b = generous_crop.convert('RGB')
+                        
+                        # 3. Transform both streams into model tensors
                         tensor_a = inference_transforms(silhouette_a).unsqueeze(0).to(DEVICE)
                         tensor_b = inference_transforms(silhouette_b).unsqueeze(0).to(DEVICE)
                         
-                        # Dual forward passes through Stage 3 (Dual-Attention Network)
+                        # 4. Evaluate both streams sequentially through Stage 3 Classifier
                         with torch.no_grad():
                             logits_a = classifier(tensor_a)
                             probs_a = F.softmax(logits_a, dim=1)
@@ -223,16 +212,15 @@ def run_pipeline_simulation():
                             logits_b = classifier(tensor_b)
                             probs_b = F.softmax(logits_b, dim=1)
                             
-                            # Ensemble Logit Fusion: Blend probabilities with a gamma balance factor
-                            # We set gamma = 0.55 to lean slightly toward macro skeletal structure
-                            gamma = 0.55
+                            # Blend predictions. We weight Stream A slightly higher (0.60) for anatomy,
+                            # and Stream B (0.40) to provide the structural scale verification.
+                            gamma = 0.60
                             final_probs = (gamma * probs_a) + ((1.0 - gamma) * probs_b)
                             _, predicted_idx = torch.max(final_probs, 1)
                             
                         soft_gate_fallback_activations += 1
                         
                     except Exception:
-                        # Structural emergency safety net to handle anomalous corrupt frames
                         emergency_silhouette = img.resize((224, 224))
                         tensor_emergency = inference_transforms(emergency_silhouette).unsqueeze(0).to(DEVICE)
                         with torch.no_grad():
@@ -240,7 +228,7 @@ def run_pipeline_simulation():
                             _, predicted_idx = torch.max(F.softmax(logits, dim=1), 1)
                         soft_gate_fallback_activations += 1
                     
-                    # Log telemetry and skip the baseline sequential Stage 3 block down below
+                    # Update telemetry pipelines
                     total_processed += 1
                     all_true.append(true_mapped)
                     all_pred.append(predicted_idx.item())
