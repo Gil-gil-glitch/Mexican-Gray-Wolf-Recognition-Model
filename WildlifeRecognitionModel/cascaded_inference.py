@@ -165,18 +165,17 @@ def run_pipeline_simulation():
                         use_fallback = True
 
                 if use_fallback:
-                    # --- OPTION B: ADVANCED SALIENT OBJECT DETECTOR FALLBACK ---
-                    # Instead of skipping background removal, leverage BiRefNet to find the animal without YOLO
+                    # --- OPTION B: ADVANCED MULTI-SCALE RESOLUTION ENSEMBLE FALLBACK ---
                     try:
-                        # Extract a generous 85% area to ensure a camouflaged animal isn't clipped
-                        crop_fraction = 0.85
-                        left = int((1 - crop_fraction) * w / 2)
-                        top = int((1 - crop_fraction) * h / 2)
-                        right = int((1 + crop_fraction) * w / 2)
-                        bottom = int((1 + crop_fraction) * h / 2)
-                        generous_crop = img.crop((left, top, right, bottom))
+                        # First stream: Extract a generous 85% area crop to capture background context and off-center animals
+                        crop_fraction_a = 0.85
+                        left_a = int((1 - crop_fraction_a) * w / 2)
+                        top_a = int((1 - crop_fraction_a) * h / 2)
+                        right_a = int((1 + crop_fraction_a) * w / 2)
+                        bottom_a = int((1 + crop_fraction_a) * h / 2)
+                        generous_crop = img.crop((left_a, top_a, right_a, bottom_a))
                         
-                        # Let BiRefNet hunt for the silhouette directly from the noisy background
+                        # Second stream: Run single-pass BiRefNet background stripping on the broad region
                         rgba_output = remove(generous_crop, session=sod_session)
                         r, g, b, a = rgba_output.split()
                         
@@ -188,18 +187,64 @@ def run_pipeline_simulation():
                         final_bbox = crisp_rgba.getbbox()
                         
                         if final_bbox:
-                            final_silhouette = crisp_rgba.crop(final_bbox).convert('RGB')
-                            soft_gate_fallback_activations += 1
-                        else:
-                            # Catastrophic fallback if matting finds absolutely nothing
-                            final_silhouette = generous_crop.convert('RGB')
-                            soft_gate_fallback_activations += 1
+                            # Stream A: Full Silhouette bounding box (Captures macro skeletal proportions)
+                            silhouette_a = crisp_rgba.crop(final_bbox).convert('RGB')
                             
-                    except Exception:
-                        # Safety net fallback
-                        final_silhouette = img.resize((224, 224))
+                            # Stream B: High-Resolution Texture Zoom (Captures micro fur patterns)
+                            # We extract a 50% sub-crop from the core center of the isolated silhouette canvas
+                            sil_w, sil_h = crisp_rgba.size
+                            crop_fraction_b = 0.50
+                            left_b = int((1 - crop_fraction_b) * sil_w / 2)
+                            top_b = int((1 - crop_fraction_b) * sil_h / 2)
+                            right_b = int((1 + crop_fraction_b) * sil_w / 2)
+                            bottom_b = int((1 + crop_fraction_b) * sil_h / 2)
+                            silhouette_b = crisp_rgba.crop((left_b, top_b, right_b, bottom_b)).convert('RGB')
+                        
+                        else:
+                            # Safe fallback to raw image crops if matting completely erases the subject
+                            silhouette_a = generous_crop.convert('RGB')
+                            
+                            crop_fraction_b = 0.45
+                            left_b = int((1 - crop_fraction_b) * w / 2)
+                            top_b = int((1 - crop_fraction_b) * h / 2)
+                            right_b = int((1 + crop_fraction_b) * w / 2)
+                            bottom_b = int((1 + crop_fraction_b) * h / 2)
+                            silhouette_b = img.crop((left_b, top_b, right_b, bottom_b)).convert('RGB')
+
+                        # Standardize and transform both streams into model-ready tensors
+                        tensor_a = inference_transforms(silhouette_a).unsqueeze(0).to(DEVICE)
+                        tensor_b = inference_transforms(silhouette_b).unsqueeze(0).to(DEVICE)
+                        
+                        # Dual forward passes through Stage 3 (Dual-Attention Network)
+                        with torch.no_grad():
+                            logits_a = classifier(tensor_a)
+                            probs_a = F.softmax(logits_a, dim=1)
+                            
+                            logits_b = classifier(tensor_b)
+                            probs_b = F.softmax(logits_b, dim=1)
+                            
+                            # Ensemble Logit Fusion: Blend probabilities with a gamma balance factor
+                            # We set gamma = 0.55 to lean slightly toward macro skeletal structure
+                            gamma = 0.55
+                            final_probs = (gamma * probs_a) + ((1.0 - gamma) * probs_b)
+                            _, predicted_idx = torch.max(final_probs, 1)
+                            
                         soft_gate_fallback_activations += 1
-                        print(f"[Fallback] Utilized safety net for {file_name}")
+                        
+                    except Exception:
+                        # Structural emergency safety net to handle anomalous corrupt frames
+                        emergency_silhouette = img.resize((224, 224))
+                        tensor_emergency = inference_transforms(emergency_silhouette).unsqueeze(0).to(DEVICE)
+                        with torch.no_grad():
+                            logits = classifier(tensor_emergency)
+                            _, predicted_idx = torch.max(F.softmax(logits, dim=1), 1)
+                        soft_gate_fallback_activations += 1
+                    
+                    # Log telemetry and skip the baseline sequential Stage 3 block down below
+                    total_processed += 1
+                    all_true.append(true_mapped)
+                    all_pred.append(predicted_idx.item())
+                    continue
                         
                 # --- STAGE 3: FINE-GRAIN DUAL ATTENTION EVALUATION ---
                 input_tensor = inference_transforms(final_silhouette).unsqueeze(0).to(DEVICE)
