@@ -96,7 +96,7 @@ for i, bundle in enumerate(metrics_bundles):
     ax.set_xticks(x)
     ax.set_xticklabels(classes, fontsize=12)
     ax.set_ylabel('Score (0.0 - 1.0)', fontsize=12)
-    ax.set_ylim(0, 1.2)  # Generous headroom for legend space inside
+    ax.set_ylim(0, 1.4) 
     
     # Pack the legend cleanly onto the individual chart itself
     ax.legend(loc='upper right', fontsize=8.5, frameon=True, shadow=False)
