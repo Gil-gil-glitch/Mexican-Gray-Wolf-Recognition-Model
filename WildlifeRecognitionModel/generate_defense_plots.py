@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 # Defining Target Categories: Wolves, Coyotes, and Domestic Dogs
 classes = ['Mexican Gray Wolf', 'Coyote', 'Domestic Dog']
 x = np.arange(len(classes))  # Label locations
-width = 0.15                 # Reduced width to comfortably fit 5 bars side-by-side
+width = 0.15                 # Optimal bar width for 5 side-by-side variables
 
 # --- COMPLETE EXPERIMENTAL METRICS MATRIX ---
 
@@ -33,11 +33,8 @@ flat_sod_p = [0.92, 0.91, 0.87]
 flat_sod_r = [0.58, 0.75, 0.69]
 flat_sod_f1 = [0.71, 0.82, 0.77]
 
-# Set up the plotting style
+# Plot configs
 plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
-fig, axs = plt.subplots(1, 3, figsize=(22, 6), sharey=True)
-
-# Colors tailored for high distinction on presentation slides
 colors = ['#95a5a6', '#e74c3c', '#f39c12', '#2ecc71', '#3498db']
 labels = [
     'Ctrl A: Standalone Classifier (No Pipeline)',
@@ -47,51 +44,65 @@ labels = [
     'Ctrl B: Flat Saliency (No YOLO Gate)'
 ]
 
-# ---------------------------------------------------------
-# GRAPH 1: PRECISION COMPARISON
-# ---------------------------------------------------------
-axs[0].bar(x - 2*width, standalone_p, width, label=labels[0], color=colors[0], edgecolor='black')
-axs[0].bar(x - width, baseline_p, width, label=labels[1], color=colors[1], edgecolor='black')
-axs[0].bar(x, opt1_p, width, label=labels[2], color=colors[2], edgecolor='black')
-axs[0].bar(x + width, opt2_p, width, label=labels[3], color=colors[3], edgecolor='black')
-axs[0].bar(x + 2*width, flat_sod_p, width, label=labels[4], color=colors[4], edgecolor='black')
+# Package data structures for clean iteration loops
+metrics_bundles = [
+    {"name": "precision", "title": "Precision Evolution Across Layouts", "data": [standalone_p, baseline_p, opt1_p, opt2_p, flat_sod_p]},
+    {"name": "recall", "title": "Recall Comparison & Fallback Impact (Core Project Goal)", "data": [standalone_r, baseline_r, opt1_r, opt2_r, flat_sod_r]},
+    {"name": "f1_score", "title": "F1-Score Metrics Synthesis (Overall System Balance)", "data": [standalone_f1, baseline_f1, opt1_f1, opt2_f1, flat_sod_f1]}
+]
 
-axs[0].set_title('Precision Evolution Across Layouts', fontsize=13, fontweight='bold')
-axs[0].set_xticks(x)
-axs[0].set_xticklabels(classes, rotation=10, fontsize=11)
-axs[0].set_ylabel('Score (0.0 - 1.0)', fontsize=12)
-axs[0].set_ylim(0, 1.15)
+# =========================================================================
+# STEP 1: GENERATE THE INTEGRATED MULTI-PANEL CHART (For Thesis/Report Log)
+# =========================================================================
+fig, axs = plt.subplots(1, 3, figsize=(22, 6), sharey=True)
 
-# ---------------------------------------------------------
-# GRAPH 2: RECALL COMPARISON (The Core Spatial-Gating Validation)
-# ---------------------------------------------------------
-axs[1].bar(x - 2*width, standalone_r, width, label=labels[0], color=colors[0], edgecolor='black')
-axs[1].bar(x - width, baseline_r, width, label=labels[1], color=colors[1], edgecolor='black')
-axs[1].bar(x, opt1_r, width, label=labels[2], color=colors[2], edgecolor='black')
-axs[1].bar(x + width, opt2_r, width, label=labels[3], color=colors[3], edgecolor='black')
-axs[1].bar(x + 2*width, flat_sod_r, width, label=labels[4], color=colors[4], edgecolor='black')
+for idx, bundle in enumerate(metrics_bundles):
+    d = bundle["data"]
+    axs[idx].bar(x - 2*width, d[0], width, label=labels[0], color=colors[0], edgecolor='black')
+    axs[idx].bar(x - width, d[1], width, label=labels[1], color=colors[1], edgecolor='black')
+    axs[idx].bar(x, d[2], width, label=labels[2], color=colors[2], edgecolor='black')
+    axs[idx].bar(x + width, d[3], width, label=labels[3], color=colors[3], edgecolor='black')
+    axs[idx].bar(x + 2*width, d[4], width, label=labels[4], color=colors[4], edgecolor='black')
+    
+    axs[idx].set_title(bundle["title"], fontsize=13, fontweight='bold')
+    axs[idx].set_xticks(x)
+    axs[idx].set_xticklabels(classes, rotation=10, fontsize=11)
+    if idx == 0:
+        axs[idx].set_ylabel('Score (0.0 - 1.0)', fontsize=12)
+    axs[idx].set_ylim(0, 1.15)
 
-axs[1].set_title('Recall Comparison & Fallback Impact', fontsize=13, fontweight='bold')
-axs[1].set_xticks(x)
-axs[1].set_xticklabels(classes, rotation=10, fontsize=11)
-
-# ---------------------------------------------------------
-# GRAPH 3: F1-SCORE COMPARISON (Overall Balanced Architecture)
-# ---------------------------------------------------------
-axs[2].bar(x - 2*width, standalone_f1, width, label=labels[0], color=colors[0], edgecolor='black')
-axs[2].bar(x - width, baseline_f1, width, label=labels[1], color=colors[1], edgecolor='black')
-axs[2].bar(x, opt1_f1, width, label=labels[2], color=colors[2], edgecolor='black')
-axs[2].bar(x + width, opt2_f1, width, label=labels[3], color=colors[3], edgecolor='black')
-axs[2].bar(x + 2*width, flat_sod_f1, width, label=labels[4], color=colors[4], edgecolor='black')
-
-axs[2].set_title('F1-Score Metrics Synthesis', fontsize=13, fontweight='bold')
-axs[2].set_xticks(x)
-axs[2].set_xticklabels(classes, rotation=10, fontsize=11)
-
-# Centralized Legend Placement beneath the subplots
 axs[1].legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=11, frameon=True)
-
 plt.tight_layout()
-output_chart_path = "pipeline_optimization_metrics.png"
-plt.savefig(output_chart_path, dpi=300, bbox_inches='tight')
-print(f"[Success] Multi-stage optimization comparison chart exported as '{output_chart_path}'")
+plt.savefig("pipeline_optimization_metrics.png", dpi=300, bbox_inches='tight')
+plt.close()
+print("[Success] Combined reference graphic exported as 'pipeline_optimization_metrics.png'")
+
+
+# =========================================================================
+# STEP 2: GENERATE THE INDIVIDUAL SLIDE GRAPHICS (For Slide Deck Presentation)
+# =========================================================================
+for i, bundle in enumerate(metrics_bundles):
+    # Higher aspect ratio (8x5) fits widescreen 16:9 slides beautifully
+    fig, ax = plt.subplots(figsize=(8, 5))
+    d = bundle["data"]
+    
+    ax.bar(x - 2*width, d[0], width, label=labels[0], color=colors[0], edgecolor='black')
+    ax.bar(x - width, d[1], width, label=labels[1], color=colors[1], edgecolor='black')
+    ax.bar(x, d[2], width, label=labels[2], color=colors[2], edgecolor='black')
+    ax.bar(x + width, d[3], width, label=labels[3], color=colors[3], edgecolor='black')
+    ax.bar(x + 2*width, d[4], width, label=labels[4], color=colors[4], edgecolor='black')
+    
+    ax.set_title(bundle["title"], fontsize=14, fontweight='bold', pad=15)
+    ax.set_xticks(x)
+    ax.set_xticklabels(classes, fontsize=12)
+    ax.set_ylabel('Score (0.0 - 1.0)', fontsize=12)
+    ax.set_ylim(0, 1.2)  # Generous headroom for legend space inside
+    
+    # Pack the legend cleanly onto the individual chart itself
+    ax.legend(loc='upper right', fontsize=8.5, frameon=True, shadow=False)
+    
+    plt.tight_layout()
+    slide_filename = f"evolution_{i+1}_{bundle['name']}.png"
+    plt.savefig(slide_filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"[Success] Presentation slide asset exported as '{slide_filename}'")
