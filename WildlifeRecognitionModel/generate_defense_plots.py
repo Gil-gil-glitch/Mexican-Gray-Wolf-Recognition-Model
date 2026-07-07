@@ -38,10 +38,11 @@ plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.
 colors = ['#95a5a6', '#e74c3c', '#f39c12', '#2ecc71', '#3498db']
 labels = [
     'Ctrl A: Standalone Classifier (No Pipeline)',
+    'Ctrl B: Flat Saliency (No YOLO Gate)'
     'Phase 1: Baseline (YOLO Hard Drop)',
     'Phase 2: Opt 1 (Raw Window Slicing)',
     'Phase 3: Opt 2 (Dense SOD Fallback - Main)',
-    'Ctrl B: Flat Saliency (No YOLO Gate)'
+    
 ]
 
 # Package data structures for clean iteration loops
@@ -96,7 +97,7 @@ for i, bundle in enumerate(metrics_bundles):
     ax.set_xticks(x)
     ax.set_xticklabels(classes, fontsize=12)
     ax.set_ylabel('Score (0.0 - 1.0)', fontsize=12)
-    ax.set_ylim(0, 1.4) 
+    ax.set_ylim(0, 1.2)  # Generous headroom for legend space inside
     
     # Pack the legend cleanly onto the individual chart itself
     ax.legend(loc='upper right', fontsize=8.5, frameon=True, shadow=False)
