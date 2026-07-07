@@ -38,11 +38,10 @@ plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.
 colors = ['#95a5a6', '#e74c3c', '#f39c12', '#2ecc71', '#3498db']
 labels = [
     'Ctrl A: Standalone Classifier (No Pipeline)',
-    'Ctrl B: Flat Saliency (No YOLO Gate)'
+    'Ctrl B: Flat Saliency (No YOLO Gate)',
     'Phase 1: Baseline (YOLO Hard Drop)',
     'Phase 2: Opt 1 (Raw Window Slicing)',
-    'Phase 3: Opt 2 (Dense SOD Fallback - Main)',
-    
+    'Phase 3: Opt 2 (Dense SOD Fallback - Main)'
 ]
 
 # Package data structures for clean iteration loops
