@@ -1,10 +1,3 @@
-## cascaded_inference.py
-#
-# Optimized cascaded multi-stage inference pipeline with Soft-Gating Fallback.
-# Prevents false-negative drops on night/camouflaged frames by feeding center crops
-# directly to Stage 3 when Stage 1 localization falls below confidence bounds.
-#
-
 import os
 import torch
 import torch.nn as nn
@@ -19,6 +12,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 import torch.nn.functional as F
+import time  # Added for benchmarking
 
 # Import custom network from Step 2
 from dual_attention_model import DualAttentionClassifier
@@ -92,11 +86,14 @@ def run_pipeline_simulation():
     dropped_files = []
 
     print("=====================================================================")
-    print("             LAUNCHING SOFT-GATED PIPELINE SIMULATION                ")
+    print("                 LAUNCHING SOFT-GATED PIPELINE SIMULATION            ")
     print("=====================================================================")
     
     COCO_ANIMAL_CLASSES = [15, 16, 17, 18, 19, 20, 21, 22, 23]
     GATING_THRESHOLD = 0.25 
+    
+    # Start high-precision wall-clock timer
+    start_time = time.perf_counter()
     
     for idx, row in tqdm(test_candidates.iterrows(), total=TEST_SIZE, desc="Processing Pipeline"):
         file_name = row['file_name']
@@ -267,6 +264,11 @@ def run_pipeline_simulation():
             })
             continue
 
+    # Stop wall-clock timer
+    end_time = time.perf_counter()
+    total_time = end_time - start_time
+    avg_latency = (total_time / total_processed) * 1000 if total_processed > 0 else 0
+
     # Final Summary Reports
     print("\n" + "="*60)
     print("      SOFT-GATED PIPELINE OPTIMIZATION ANALYSIS SUMMARY")
@@ -275,6 +277,9 @@ def run_pipeline_simulation():
     print(f"  ↳ Standard Matting Route:          {standard_pipeline_successes}")
     print(f"  ↳ Soft-Gate Fallback Crops:         {soft_gate_fallback_activations} (Saved from Dropping!)")
     print(f"  ↳ Uncaught Structural Exceptions:    {catastrophic_drops}")
+    print("-"*60)
+    print(f"Total Benchmark Compute Time:        {total_time:.2f} seconds")
+    print(f"Average Latency Per Frame:           {avg_latency:.2f} ms")
     print("="*60)
 
     if dropped_files:
@@ -297,3 +302,4 @@ def run_pipeline_simulation():
 
 if __name__ == "__main__":
     run_pipeline_simulation()
+
