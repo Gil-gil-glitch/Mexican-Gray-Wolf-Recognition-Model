@@ -28,10 +28,6 @@ opt2_p = [0.93, 0.94, 0.92]
 opt2_r = [0.63, 0.75, 0.73]
 opt2_f1 = [0.74, 0.84, 0.81]
 
-# 5. Flat Saliency Pipeline (Stage 1 YOLO Bypassed - All frames direct to 85% Saliency Crop)
-flat_sod_p = [0.92, 0.91, 0.87]
-flat_sod_r = [0.58, 0.75, 0.69]
-flat_sod_f1 = [0.71, 0.82, 0.77]
 
 # Plot configs
 plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
@@ -40,15 +36,14 @@ labels = [
     'Ctrl A: Standalone Classifier (No Pipeline)',
     'Ctrl B: Flat Saliency (No YOLO Gate)',
     'Phase 1: Baseline (YOLO Hard Drop)',
-    'Phase 2: Opt 1 (Raw Window Slicing)',
-    'Phase 3: Opt 2 (Dense SOD Fallback - Main)'
+    'Phase 2: Opt 1 (Raw Window Slicing)'
 ]
 
 # Package data structures for clean iteration loops
 metrics_bundles = [
-    {"name": "precision", "title": "Precision Evolution Across Layouts", "data": [standalone_p, baseline_p, opt1_p, opt2_p, flat_sod_p]},
-    {"name": "recall", "title": "Recall Comparison & Fallback Impact (Core Project Goal)", "data": [standalone_r, baseline_r, opt1_r, opt2_r, flat_sod_r]},
-    {"name": "f1_score", "title": "F1-Score Metrics Synthesis (Overall System Balance)", "data": [standalone_f1, baseline_f1, opt1_f1, opt2_f1, flat_sod_f1]}
+    {"name": "precision", "title": "Precision Evolution Across Layouts", "data": [standalone_p, baseline_p, opt1_p, opt2_p]},
+    {"name": "recall", "title": "Recall Comparison & Fallback Impact (Core Project Goal)", "data": [standalone_r, baseline_r, opt1_r, opt2_r]},
+    {"name": "f1_score", "title": "F1-Score Metrics Synthesis (Overall System Balance)", "data": [standalone_f1, baseline_f1, opt1_f1, opt2_f1]}
 ]
 
 # =========================================================================
@@ -62,7 +57,6 @@ for idx, bundle in enumerate(metrics_bundles):
     axs[idx].bar(x - width, d[1], width, label=labels[1], color=colors[1], edgecolor='black')
     axs[idx].bar(x, d[2], width, label=labels[2], color=colors[2], edgecolor='black')
     axs[idx].bar(x + width, d[3], width, label=labels[3], color=colors[3], edgecolor='black')
-    axs[idx].bar(x + 2*width, d[4], width, label=labels[4], color=colors[4], edgecolor='black')
     
     axs[idx].set_title(bundle["title"], fontsize=13, fontweight='bold')
     axs[idx].set_xticks(x)
@@ -90,7 +84,6 @@ for i, bundle in enumerate(metrics_bundles):
     ax.bar(x - width, d[1], width, label=labels[1], color=colors[1], edgecolor='black')
     ax.bar(x, d[2], width, label=labels[2], color=colors[2], edgecolor='black')
     ax.bar(x + width, d[3], width, label=labels[3], color=colors[3], edgecolor='black')
-    ax.bar(x + 2*width, d[4], width, label=labels[4], color=colors[4], edgecolor='black')
     
     ax.set_title(bundle["title"], fontsize=14, fontweight='bold', pad=15)
     ax.set_xticks(x)
