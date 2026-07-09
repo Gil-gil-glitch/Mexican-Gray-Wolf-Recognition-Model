@@ -23,6 +23,7 @@ sns.heatmap(
     yticklabels=labels,
     cbar=True,
     square=True,
+    annot_kws={"size": 14, "weight": "bold"},
 )
 
 # Formatting
