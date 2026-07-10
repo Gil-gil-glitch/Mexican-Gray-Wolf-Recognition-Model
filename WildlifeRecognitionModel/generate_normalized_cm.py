@@ -27,7 +27,6 @@ sns.heatmap(
 )
 
 # Formatting
-plt.title("Optimized Soft-Gated Pipeline Normalized Confusion Matrix", fontsize=14, pad=15)
 plt.xlabel("Predicted label", fontsize=12)
 plt.ylabel("True label", fontsize=12)
 plt.tight_layout()
