@@ -42,4 +42,11 @@ CASE_STUDIES = [
         "raw": "loc_0188_im_002313.jpg",
         "mask": "hybrid_wolf_loc_0188_im_002313.png",
     },
+    {
+        "type": "Failure",
+        "title": "Case Study 6: Salient Foreground Occlusion",
+        "desc": "Highlights BiRefNet's limitations in extracting targets when they are occluded by salient foreground elements.",
+        "raw": "58a8a246-23d2-11e8-a6a3-ec086b02610b.jpg",
+        "mask": "hybrid_wildlife_subject_58a8a246-23d2-11e8-a6a3-ec086b02610b.png",
+    },
 ]
